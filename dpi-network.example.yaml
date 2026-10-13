@@ -38,6 +38,7 @@ defaults:
   env_keys: [OPENROUTER_API_KEY]   # secrets: copied by name from .env, never written here
   # env:                           # plain settings, written as-is
   #   DPI_PROVIDER: faux           # the free deterministic model, for tests
+  #   DPI_PROVIDER: pi             # the device's own Pi logins, keys, models.json and provider extensions
 
 devices:
   local:

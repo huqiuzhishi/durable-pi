@@ -37,10 +37,11 @@ import { join, dirname, resolve } from "node:path";
 import { homedir, hostname, platform } from "node:os";
 import { randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT as ctx, withAbortSignal } from "@earendil-works/chord/context";
-import { createModels } from "@earendil-works/pi-ai/models";
+import { createModels, type Models } from "@earendil-works/pi-ai/models";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { curatedModels, defaultModelId } from "./model-catalog.js";
 import { fauxModels, installFaux } from "./faux.js";
+import { loadPiModels, type PiModels } from "./pi-models.js";
 import {
   Harness,
   createRegistry,
@@ -90,7 +91,7 @@ export interface StoreOptions {
   dataDir: string;
   startDirs: string[];
   name: string;
-  provider: "openrouter" | "faux";
+  provider: "openrouter" | "faux" | "pi";
 }
 
 /** Agent documents a client may read or stream, by kind. */
@@ -141,7 +142,7 @@ const decodeCursor = (cursor?: string) => {
 };
 
 export class Store {
-  readonly models = createModels();
+  readonly models: Models;
   readonly opened = new Map<string, Opened>();
   readonly errors = new Map<string, string>();
   readonly catalog: DatabaseSync;
@@ -176,14 +177,19 @@ export class Store {
     return this.options.startDirs;
   }
 
-  private constructor(readonly options: StoreOptions) {
-    if (options.provider === "faux") installFaux(this.models);
-    else {
+  private constructor(
+    readonly options: StoreOptions,
+    private readonly pi?: PiModels,
+  ) {
+    const models = createModels();
+    this.models = pi?.models ?? models;
+    if (options.provider === "faux") installFaux(models);
+    else if (options.provider === "openrouter") {
       const provider = openrouterProvider();
       const catalog = provider.getModels();
       for (const model of curatedModels)
         if (!catalog.some((m) => m.id === model.id)) throw Error(`OpenRouter catalog missing ${model.id}`);
-      this.models.setProvider({
+      models.setProvider({
         ...provider,
         getModels: () => catalog.filter((m) => curatedModels.some((c) => c.id === m.id)),
       });
@@ -207,13 +213,16 @@ export class Store {
   }
 
   static async open(options: StoreOptions) {
-    const store = new Store({ ...options, dataDir: resolve(options.dataDir) });
+    const pi = options.provider === "pi" ? await loadPiModels() : undefined;
+    const store = new Store({ ...options, dataDir: resolve(options.dataDir) }, pi);
     // Start dirs are where new sessions begin; create any that do not exist yet.
     await Promise.all(options.startDirs.map((dir) => mkdir(dir, { recursive: true }).catch(() => {})));
     try {
       store.unlockShared = lockFile(`${store.sharedStatePath}.lock`);
       store.shared = await SharedState.open(store.sharedStatePath);
       store.shared.harness.subscribeCommits(() => store.notify());
+      // Before the sessions open: routedModel checks stored models against this list.
+      store.modelList = await store.loadModels();
       for (const row of store.list()) {
         try {
           await store.openAgent(row);
@@ -223,7 +232,6 @@ export class Store {
       }
       if (!(await store.shared.initialized()))
         await store.shared.initialize({ goal: "Explore durable agents", counter: 0, notes: [] });
-      store.modelList = await store.loadModels();
       for (const { harness } of store.opened.values()) harness.resume();
       return store;
     } catch (e) {
@@ -264,7 +272,15 @@ export class Store {
   }
 
   private defaultModel() {
+    if (this.options.provider === "pi") return this.piDefault().modelId;
     return this.options.provider === "faux" ? fauxModels[0].id : defaultModelId;
+  }
+
+  /** Pi's default model when it has credentials here, else the first available one. */
+  private piDefault(): ModelRef {
+    const d = this.pi?.defaultModel;
+    const m = this.modelList.find((m) => m.provider === d?.provider && m.id === d?.modelId) ?? this.modelList[0];
+    return { provider: m.provider, modelId: m.id };
   }
 
   private async loadModels(): Promise<ModelInfo[]> {
@@ -279,6 +295,26 @@ export class Store {
         reasoning: false,
         cost: { input: 0, output: 0 },
       }));
+    if (this.options.provider === "pi") {
+      const available = await this.models.getAvailable(undefined, { signal: AbortSignal.timeout(10000) });
+      if (!available.length)
+        throw Error("Pi has no models with credentials: log in with pi /login or set a provider API key");
+      const d = this.pi?.defaultModel;
+      const isDefault = (m: (typeof available)[number]) => m.provider === d?.provider && m.id === d?.modelId;
+      // Default first: clients look the default up by id, and ids repeat across providers.
+      return [...available]
+        .sort((a, b) => Number(isDefault(b)) - Number(isDefault(a)))
+        .map((m) => ({
+          id: m.id,
+          provider: m.provider,
+          name: m.name,
+          tier: "Pi",
+          icon: "lab.png",
+          contextWindow: m.contextWindow,
+          reasoning: m.reasoning,
+          cost: { input: m.cost.input, output: m.cost.output },
+        }));
+    }
     const available = await this.models.getAvailable("openrouter", { signal: AbortSignal.timeout(10000) });
     return curatedModels.flatMap((c) => {
       const m = available.find((m) => m.id === c.id);
@@ -304,6 +340,10 @@ export class Store {
       const id = fauxModels.some((m) => m.id === model?.modelId) ? model!.modelId : fauxModels[0].id;
       return { provider: "faux", modelId: id };
     }
+    if (this.options.provider === "pi")
+      return this.modelList.some((m) => m.provider === model?.provider && m.id === model?.modelId)
+        ? model!
+        : this.piDefault();
     const exact = model?.provider === "openrouter" ? model.modelId : `${model?.provider}/${model?.modelId}`;
     return {
       provider: "openrouter",
@@ -318,9 +358,11 @@ export class Store {
     const known =
       this.options.provider === "faux"
         ? m.provider === "faux" && fauxModels.some((f) => f.id === m.modelId)
-        : m.provider === "openrouter" &&
-          curatedModels.some((c) => c.id === m.modelId) &&
-          !!this.models.getModel(m.provider, m.modelId);
+        : this.options.provider === "pi"
+          ? this.modelList.some((c) => c.provider === m.provider && c.id === m.modelId)
+          : m.provider === "openrouter" &&
+            curatedModels.some((c) => c.id === m.modelId) &&
+            !!this.models.getModel(m.provider, m.modelId);
     if (!known) throw invalid(`Unknown model ${m.provider}/${m.modelId}. Choose one from GET /v1/device models`);
     return { provider: m.provider, modelId: m.modelId };
   }
