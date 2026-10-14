@@ -12,12 +12,14 @@ import {
   GitFork,
   MessageSquare,
   Pencil,
+  SquareTerminal,
 } from "lucide-vue-next";
 import type { AgentSummary } from "@sdk/api";
 import { lineage } from "@sdk/models";
 import TranscriptItem from "./TranscriptItem.vue";
 import DeviceIcon from "./DeviceIcon.vue";
 import Composer from "./Composer.vue";
+import TerminalPanel from "./TerminalPanel.vue";
 import {
   activeLineage,
   agent,
@@ -38,6 +40,23 @@ import {
 const chat = ref<HTMLElement>();
 const lineageNav = ref<HTMLElement>();
 const picker = ref(false);
+// The hub reaches local devices directly and ssh/exe-dev devices over ssh; url devices have no shell access.
+const canTerminal = computed(() => !!sessionSummary.value?.cwd && device.value?.kind !== "url");
+// Terminal on top, transcript below; drag the divider. Height is a percent of the panel, kept per browser.
+const panel = ref<HTMLElement>();
+const termHeight = ref(Number(localStorage.getItem("dpi.terminal-height")) || 50);
+function resizeTerminal(e: PointerEvent) {
+  const box = panel.value!.getBoundingClientRect();
+  const move = (m: PointerEvent) =>
+    (termHeight.value = Math.max(15, Math.min(85, ((m.clientY - box.top) / box.height) * 100)));
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    localStorage.setItem("dpi.terminal-height", String(Math.round(termHeight.value)));
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
 const items = computed(() => agentState.value.items);
 const liveItem = computed(() => items.value.some((i) => i.kind === "assistant" && i.streaming));
 const runningTool = computed(() =>
@@ -149,7 +168,7 @@ watch(
 </script>
 
 <template>
-  <section class="chat-panel">
+  <section ref="panel" class="chat-panel">
     <header class="chat-header">
       <div class="lineage-picker">
         <div class="lineage-toolbar">
@@ -202,6 +221,17 @@ watch(
               </button>
             </template>
           </nav>
+          <button
+            v-if="canTerminal"
+            class="icon-button"
+            :class="{ active: ui.terminal }"
+            aria-label="Toggle terminal"
+            :aria-pressed="ui.terminal"
+            :title="`Terminal in ${sessionSummary?.cwd} on ${device?.id} (tmux)`"
+            @click="ui.terminal = !ui.terminal"
+          >
+            <SquareTerminal :size="18" />
+          </button>
           <button
             class="icon-button"
             aria-label="Rename agent"
@@ -267,6 +297,22 @@ watch(
         </template>
       </div>
     </header>
+    <template v-if="ui.terminal && canTerminal && selected">
+      <TerminalPanel
+        :key="`${selected.deviceId}/${selected.sessionId}`"
+        :style="{ flexBasis: `${termHeight}%` }"
+        :device-id="selected.deviceId"
+        :session-id="selected.sessionId"
+        :cwd="sessionSummary!.cwd"
+      />
+      <div
+        class="terminal-resizer"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize terminal"
+        @pointerdown.prevent="resizeTerminal"
+      />
+    </template>
     <div ref="chat" class="chat-scroll" data-testid="chat">
       <div v-if="!agentState.ready" class="chat-empty">
         <Activity :size="30" />

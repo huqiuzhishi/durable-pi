@@ -242,6 +242,8 @@ export const ui = reactive({
   inspectorOverlay: false,
   tab: "session",
   composer: "",
+  /** The session's tmux terminal panel under the transcript. */
+  terminal: false,
   dialog: undefined as Dialog | undefined,
 });
 

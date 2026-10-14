@@ -12,6 +12,8 @@ import { StreamMux } from "./mux.js";
 import { proxy } from "./proxy.js";
 import { guard } from "./guard.js";
 import { seedFromConfig } from "./seed.js";
+import { terminalUpgrade } from "./terminal.js";
+import { tryLoadNetworkConfig } from "../../../../dpi-sdk/src/node/config.js";
 
 const args = process.argv.slice(2);
 const option = (key: string, fallback: string) => {
@@ -93,6 +95,12 @@ app.all("/api/devices/:id/v1/{*rest}", proxy(registry, monitor));
 app.use("/api", (_req, res) => res.status(404).json(err("not_found", "API route not found")));
 
 const server = createServer(app);
+const terminal = terminalUpgrade(allowedHosts, host === "127.0.0.1" || host === "localhost", () =>
+  tryLoadNetworkConfig(appDir),
+);
+server.on("upgrade", (req, socket, head) => {
+  if (!terminal(req, socket, head) && !args.includes("--dev")) socket.destroy();
+});
 let vite: Awaited<ReturnType<(typeof import("vite"))["createServer"]>> | undefined;
 if (args.includes("--dev")) {
   const { createServer: createVite } = await import("vite");

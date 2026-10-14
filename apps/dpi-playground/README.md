@@ -32,6 +32,7 @@ npm run dev                          # Vite middleware with hot reload (no build
 | `GET /api/stream` | the tab's SSE connection. The first frame carries its `streamId` |
 | `PUT /api/stream/:streamId {subs}` | `<dev>/device?docs=…`, `<dev>/session/<sid>`, `<dev>/agent/<sid>/<aid>?docs=…`. Up to 20 keys. `network` is always on |
 | `ALL /api/devices/:id/v1/*` | REST proxy with the device token injected. Answers 503 while the device is not online and 502 when it does not answer. Paths ending in `/events` answer 400: streams go through `/api/stream` |
+| `WS /api/terminal?device&session&cwd` | the session's terminal: `tmux new-session -A -s dpi-<session>` running `zsh -l` in its folder, locally or over `ssh -t` for ssh and exe-dev devices. Closing the panel only detaches. Refused unless the hub listens on loopback |
 
 `guard.ts` rejects unknown Host headers (DNS rebinding), cross-origin requests and non-JSON writes.
 

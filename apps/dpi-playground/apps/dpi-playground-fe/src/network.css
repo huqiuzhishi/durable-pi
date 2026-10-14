@@ -673,3 +673,23 @@
   font-size: 14px;
   text-align: right;
 }
+
+/* ---------------------------------------------------------------- session terminal */
+.terminal-panel {
+  flex: 0 0 50%;
+  min-height: 120px;
+  padding: 6px 8px;
+  background: #1e1718;
+  overflow: hidden;
+}
+.terminal-resizer {
+  flex: 0 0 6px;
+  cursor: row-resize;
+  background: var(--line);
+}
+.terminal-resizer:hover {
+  background: #ff899766;
+}
+.chat-header .icon-button.active {
+  color: var(--accent);
+}
