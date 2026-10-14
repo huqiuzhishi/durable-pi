@@ -62,12 +62,17 @@ function localEnv(config: NetworkConfig): Record<string, string> {
 
 // ------------------------------------------------------------------ shared steps
 
+// LOGIN_PATH: what a fresh bash login shell gets, so the service finds the user's tools (~/.local/bin, nix, ...).
 async function facts(device: NetDevice) {
   const out = (
-    await exec(device, `echo "HOME=$HOME"; echo "USER=$(id -un)"; echo "NODE=$(nvm which ${device.node} 2>/dev/null || command -v node || true)"`)
+    await exec(
+      device,
+      `echo "HOME=$HOME"; echo "USER=$(id -un)"; echo "NODE=$(nvm which ${device.node} 2>/dev/null || command -v node || true)"
+echo "LOGIN_PATH=$(env -i HOME="$HOME" USER="$(id -un)" LOGNAME="$(id -un)" bash -lc 'printf "\\n%s" "$PATH"' 2>/dev/null </dev/null | tail -n 1)"`,
+    )
   ).stdout;
   const get = (k: string) => out.match(new RegExp(`^${k}=(.*)$`, "m"))?.[1]?.trim() ?? "";
-  return { home: get("HOME"), user: get("USER"), node: get("NODE") };
+  return { home: get("HOME"), user: get("USER"), node: get("NODE"), loginPath: get("LOGIN_PATH") };
 }
 
 const abs = (p: string, home: string) => (p === "~" ? home : p.startsWith("~/") ? `${home}/${p.slice(2)}` : p);
@@ -197,7 +202,15 @@ async function installService(device: NetDevice, ctx: DriverContext) {
     USER: f.user,
     DPI_HOME: dpiHome,
     LOG: `${dpiHome}/backend.log`,
-    PATH: `${nodeDir}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`,
+    PATH: [
+      ...new Set([
+        nodeDir,
+        ...f.loginPath.split(":"),
+        ...`${f.home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`.split(":"),
+      ]),
+    ]
+      .filter((p) => /^\/\S*$/.test(p))
+      .join(":"),
   };
   const deployDir = join(ctx.config.root, "apps/dpi-backend/deploy");
   if (device.service === "launchd") {
