@@ -105,6 +105,38 @@ async function deploy(device: NetDevice, ctx: DriverContext) {
   );
 }
 
+/**
+ * Sync the code like `deploy`, but run npm ci only when a package file changed or node_modules is missing.
+ * Returns whether anything on the device changed, so the caller restarts only then.
+ */
+export async function syncCode(device: NetDevice, ctx: DriverContext) {
+  const code = device.codeDir.replace(/^~\//, "");
+  const out = await rsync(device, ["apps/dpi-backend", "apps/dpi-sdk"], `${code}/apps/`, ctx.config.root, ["--itemize-changes"]);
+  const changed = out.stdout
+    .split("\n")
+    .filter((l) => /^([<>c]f|\*deleting)/.test(l))
+    .map((l) => l.slice(l.indexOf(" ")).trim());
+  const lockChanged = changed.some((p) => /^dpi-backend\/package(-lock)?\.json$/.test(p));
+  const installed = await exec(
+    device,
+    `cd "${shPath(device.codeDir)}/apps/dpi-backend"
+if [ "${lockChanged ? 1 : 0}" = 1 ] || [ ! -d node_modules ]; then nvm exec ${device.node} npm ci --no-audit --no-fund --loglevel=error >/dev/null && echo installed; fi`,
+    { timeoutMs: 900_000 },
+  );
+  const ci = installed.stdout.includes("installed");
+  ctx.log(`sync ${device.id}: ${changed.length} file(s) changed${ci ? ", npm ci" : ""}`);
+  return changed.length > 0 || ci;
+}
+
+export async function serviceInstalled(device: NetDevice) {
+  const check =
+    device.service === "launchd"
+      ? `test -f "$HOME/Library/LaunchAgents/${SERVICE_LABEL}.plist"`
+      : `systemctl cat ${SYSTEMD_UNIT} >/dev/null 2>&1`;
+  const out = await exec(device, `if ${check} && [ -d "${shPath(device.codeDir)}/apps/dpi-backend" ]; then echo yes; fi`);
+  return out.stdout.includes("yes");
+}
+
 /** Write <home>/backend.env, keeping an existing token unless rotating. Secrets travel on stdin. */
 async function writeEnv(device: NetDevice, ctx: DriverContext, rotate = false) {
   const local = localEnv(ctx.config);

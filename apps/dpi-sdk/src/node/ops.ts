@@ -80,11 +80,12 @@ export function remote(device: NetDevice, script: string, options: Omit<RunOptio
   return run("ssh", [...SSH_OPTS, sshTarget(device), "sh -s"], { ...options, stdin: PRELUDE + script });
 }
 
-export function rsync(device: NetDevice, sources: string[], dest: string, cwd: string) {
+export function rsync(device: NetDevice, sources: string[], dest: string, cwd: string, extra: string[] = []) {
   return run(
     "rsync",
     [
       "-a",
+      ...extra,
       "--delete",
       "--exclude", "node_modules",
       "--exclude", ".data",
