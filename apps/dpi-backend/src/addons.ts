@@ -95,7 +95,14 @@ export const ADDON_INFO: Omit<HarnessExtensionInfo, "enabled" | "prompts">[] = [
   },
 ];
 
-export function createAddons(opts: { offline: boolean }) {
+export const PI_ADDON_INFO: Omit<HarnessExtensionInfo, "enabled" | "prompts"> = {
+  name: "pi",
+  title: "Pi skills and tools",
+  description:
+    "This machine's Pi skills, AGENTS.md instructions and the Pi extension tools that run without Pi's UI (web search, fetch, PDF and document reading, memory recall).",
+};
+
+export function createAddons(opts: { offline: boolean; pi?: Extension }) {
   const prompts = defineExtension({
     name: "system-prompts",
     sections: [
@@ -132,8 +139,12 @@ export function createAddons(opts: { offline: boolean }) {
       }),
     ],
   });
-  const all: Record<string, Extension> = { "system-prompts": prompts, "jev-damage-control": jev };
-  return { all, list: [prompts, jev] };
+  const all: Record<string, Extension> = {
+    "system-prompts": prompts,
+    "jev-damage-control": jev,
+    ...(opts.pi && { pi: opts.pi }),
+  };
+  return { all, list: Object.values(all) };
 }
 
 export type Addons = ReturnType<typeof createAddons>;

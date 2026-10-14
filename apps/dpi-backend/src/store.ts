@@ -41,7 +41,7 @@ import { createModels, type Models } from "@earendil-works/pi-ai/models";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { curatedModels, defaultModelId } from "./model-catalog.js";
 import { fauxModels, installFaux } from "./faux.js";
-import { loadPiModels, type PiModels } from "./pi-models.js";
+import { loadPi, type PiSetup } from "./pi-models.js";
 import {
   Harness,
   createRegistry,
@@ -60,7 +60,7 @@ import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { createPlayground, Workspace, type SpawnSession } from "./extensions.js";
 import { createJobs, JobRuns, JOB_DEFS, jobDef, resolveJobInput, type Jobs } from "./jobs.js";
-import { ADDON_INFO, createAddons, PROMPTS, PromptChecklist, type Addons } from "./addons.js";
+import { ADDON_INFO, createAddons, PI_ADDON_INFO, PROMPTS, PromptChecklist, type Addons } from "./addons.js";
 import { JOB_RUNS_DOC } from "../../dpi-sdk/src/jobs.js";
 
 export const DURABLE_VERSION = "1.0.3";
@@ -179,7 +179,7 @@ export class Store {
 
   private constructor(
     readonly options: StoreOptions,
-    private readonly pi?: PiModels,
+    private readonly pi?: PiSetup,
   ) {
     const models = createModels();
     this.models = pi?.models ?? models;
@@ -213,7 +213,7 @@ export class Store {
   }
 
   static async open(options: StoreOptions) {
-    const pi = options.provider === "pi" ? await loadPiModels() : undefined;
+    const pi = options.provider === "pi" ? await loadPi() : undefined;
     const store = new Store({ ...options, dataDir: resolve(options.dataDir) }, pi);
     // Start dirs are where new sessions begin; create any that do not exist yet.
     await Promise.all(options.startDirs.map((dir) => mkdir(dir, { recursive: true }).catch(() => {})));
@@ -552,7 +552,7 @@ export class Store {
       const playground = createPlayground(this.shared, row.id, this.spawnSession, jobs);
       registry.install(playground);
       // Custom extensions are installed but not selected: an agent turns them on in its own selection.
-      const addons = createAddons({ offline: this.options.provider === "faux" });
+      const addons = createAddons({ offline: this.options.provider === "faux", pi: this.pi?.extension });
       for (const extension of addons.list) registry.install(extension);
       const harness = await Harness.open(
         await openNodeSqliteStorage(row.dbPath),
@@ -565,7 +565,7 @@ export class Store {
             await tx.doc(JobRuns, c.id);
           },
           settings: {
-            extensions: [CodingTools, playground],
+            extensions: [CodingTools, playground, ...(this.pi ? [this.pi.extension] : [])],
             // Read at every use, so a PATCH .../compaction applies from the next request.
             get compaction() {
               return compaction();
@@ -988,12 +988,16 @@ export class Store {
 
   // ------------------------------------------------------------ custom extensions (per agent)
 
+  private get addonInfo() {
+    return this.pi ? [...ADDON_INFO, PI_ADDON_INFO] : ADDON_INFO;
+  }
+
   async extensionsOf(row: SessionRow, c: Conversation): Promise<AgentExtensions> {
     const active = new Set((await c.agent(ctx)).extensions.map((e) => e.name));
     const checked = (await this.harness(row).snapshot(PromptChecklist, c.id, ctx))?.enabled ?? [PROMPTS[0].id];
     return {
-      builtIn: [...active].filter((name) => !ADDON_INFO.some((a) => a.name === name)),
-      extensions: ADDON_INFO.map((info) => ({
+      builtIn: [...active].filter((name) => !this.addonInfo.some((a) => a.name === name)),
+      extensions: this.addonInfo.map((info) => ({
         ...info,
         enabled: active.has(info.name),
         ...(info.name === "system-prompts"
@@ -1009,10 +1013,10 @@ export class Store {
     const enabled = body.enabled;
     if (typeof body.name === "string") {
       const extension = this.opened.get(row.id)?.addons.all[body.name];
-      if (!extension) throw invalid(`Unknown extension ${body.name}. Known: ${ADDON_INFO.map((a) => a.name).join(", ")}`);
+      if (!extension) throw invalid(`Unknown extension ${body.name}. Known: ${this.addonInfo.map((a) => a.name).join(", ")}`);
       // An array is the agent's whole selection. An { add | remove } object would edit the host default instead and
       // replace the previous edit, so turning one extension on would turn the other off.
-      const rank = (name: string) => ADDON_INFO.findIndex((a) => a.name === name);
+      const rank = (name: string) => this.addonInfo.findIndex((a) => a.name === name);
       const others = (await c.agent(ctx)).extensions.filter((e) => e.name !== extension.name);
       const next = (enabled ? [...others, extension] : others).sort((a, b) => rank(a.name) - rank(b.name));
       await c.configure({ extensions: next }, ctx);

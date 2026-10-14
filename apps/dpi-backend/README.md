@@ -30,7 +30,7 @@ With the repo's network config, `just net up local && just backend run` does the
 | `DPI_DATA_DIR` | `$DPI_HOME/backend` | catalog, app state, `sessions/`, `archive/` |
 | `DPI_HOME` | `~/.dpi` | where `backend.env` is read (set by the service unit) |
 | `DPI_ENV_FILE` | `$DPI_HOME/backend.env` | the env file to read |
-| `DPI_PROVIDER` | `openrouter` | `faux` gives a free deterministic model for tests. `pi` uses this machine's Pi setup: `~/.pi/agent/auth.json` logins and keys (GitHub Copilot, Anthropic, ...), `models.json`, provider env vars such as `GEMINI_API_KEY`, providers from the extensions in Pi's settings, and Pi's default model. `PI_CODING_AGENT_DIR` picks another Pi config dir |
+| `DPI_PROVIDER` | `openrouter` | `faux` gives a free deterministic model for tests. `pi` uses this machine's Pi setup: `~/.pi/agent/auth.json` logins and keys (GitHub Copilot, Anthropic, ...), `models.json`, provider env vars such as `GEMINI_API_KEY`, providers from the extensions in Pi's settings, and Pi's default model. It also adds a "Pi skills and tools" add-on, on by default and switchable per agent in the Extend tab: Pi's skills, the global and project `AGENTS.md` files, and the Pi extension tools that run without Pi's UI (`web_search`, `fetch_content`, `get_search_content`, `read_pdf`, `document_parse`, `document_search`, `document_screenshot`, `memory_recall`). `PI_CODING_AGENT_DIR` picks another Pi config dir |
 | `OPENROUTER_API_KEY` | | model access, required unless `DPI_PROVIDER` is `faux` or `pi`. Without it the device lists no models. Never sent to clients |
 | `TYPESAFE_API_KEY` | | optional: `jev-damage-control` asks Jev with it, else through OpenRouter |
 

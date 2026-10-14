@@ -27,7 +27,7 @@ The command lives in [`.claude/commands/install.md`](.claude/commands/install.md
 
 ### Manual Install
 
-**Prereqs:** [Node.js 24](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)), [`just`](https://github.com/casey/just), `zsh` (macOS ships it), an [OpenRouter](https://openrouter.ai) API key, or set `DPI_PROVIDER: pi` in `dpi-network.yaml` to reuse your [Pi](https://github.com/earendil-works/pi) logins and API keys ([details](apps/dpi-backend/README.md#configuration-dpibackendenv)). Remote devices need passwordless `ssh`, and exe.dev VMs need an [exe.dev](https://exe.dev) account.
+**Prereqs:** [Node.js 24](https://nodejs.org) (via [nvm](https://github.com/nvm-sh/nvm)), [`just`](https://github.com/casey/just), `zsh` (macOS ships it), an [OpenRouter](https://openrouter.ai) API key, or set `DPI_PROVIDER: pi` in `dpi-network.yaml` to reuse your [Pi](https://github.com/earendil-works/pi) logins, API keys, skills and extension tools ([details](apps/dpi-backend/README.md#configuration-dpibackendenv)). Remote devices need passwordless `ssh`, and exe.dev VMs need an [exe.dev](https://exe.dev) account.
 
 ```bash
 cp .env.example .env                           # set OPENROUTER_API_KEY; copied into each device's backend.env, never sent to clients

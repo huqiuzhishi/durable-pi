@@ -62,7 +62,7 @@ Optional, so report them and continue:
 
 1. If `.env` is missing, copy the template: `cp .env.example .env`, then ask the user to paste their OpenRouter key into `.env` (https://openrouter.ai/keys). Do not ask for the key in chat.
 2. Confirm the key is set without printing it: `grep -Eq '^OPENROUTER_API_KEY=sk-' .env && echo set || ([ -n "$OPENROUTER_API_KEY" ] && echo "set in environment") || echo missing`.
-3. If it is missing and the user wants to continue without a key, offer two options: `DPI_PROVIDER: pi` in the `env` of `dpi-network.yaml` reuses this machine's Pi logins and keys (`~/.pi/agent/auth.json`, `models.json`, provider env vars, provider extensions), and `DPI_PROVIDER: faux` is the free deterministic model.
+3. If it is missing and the user wants to continue without a key, offer two options: `DPI_PROVIDER: pi` in the `env` of `dpi-network.yaml` reuses this machine's Pi logins and keys (`~/.pi/agent/auth.json`, `models.json`, provider env vars, provider extensions) along with its skills, `AGENTS.md` files and UI-free extension tools, and `DPI_PROVIDER: faux` is the free deterministic model.
 4. Optional, for the proactive demo's voice line: `grep -Eq '^ELEVENLABS_API_KEY=.+' .env && echo set || echo "not set (the demo runs, the voice line is skipped)"`. The line plays through `afplay` on macOS and in the browser elsewhere; `ELEVENLABS_VOICE_ID` picks another voice from the user's ElevenLabs account.
 
 ### Step 3 — Install Dependencies
