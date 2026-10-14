@@ -2,9 +2,10 @@
 // logins), models.json, provider env vars, the extensions in Pi's settings (their providers and some of their tools),
 // skills and AGENTS.md files. DPI_PI_EXTENSIONS (colon-separated, like pi's --extension) adds extensions whose
 // tool_call handlers guard every durable tool call, the way a security policy guards pi's own.
-import { readFileSync } from "node:fs";
+// <DPI_HOME>/extra-models.json, {"<provider>": [model, ...]}, adds models a provider's own config lacks.
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
@@ -66,6 +67,7 @@ export async function loadPi(): Promise<PiSetup> {
   });
   for (const d of services.diagnostics) console.error(`[pi] ${d.type}: ${d.message}`);
   const { modelRuntime, settingsManager, resourceLoader, agentDir } = services;
+  addExtraModels(modelRuntime, join(process.env.DPI_HOME ?? join(homedir(), ".dpi"), "extra-models.json"));
   // A bound Pi session gives extension tools the context and pi.* actions they expect at execution time.
   const { session } = await createAgentSessionFromServices({
     services,
@@ -125,6 +127,26 @@ export async function loadPi(): Promise<PiSetup> {
     guard,
     skills: allSkills,
   };
+}
+
+type ModelRuntime = Awaited<ReturnType<typeof createAgentSessionServices>>["modelRuntime"];
+type ModelConfig = NonNullable<Parameters<ModelRuntime["registerProvider"]>[1]["models"]>[number];
+
+/** Re-registering a provider replaces its model list, so pass its current models plus the new ids. */
+function addExtraModels(runtime: ModelRuntime, file: string) {
+  if (!existsSync(file)) return;
+  try {
+    const extra = JSON.parse(readFileSync(file, "utf8")) as Record<string, ModelConfig[]>;
+    for (const [provider, models] of Object.entries(extra)) {
+      const current = runtime.getModels(provider);
+      if (!current.length) throw Error(`provider ${provider} has no models to extend`);
+      const ids = new Set(current.map((m) => m.id));
+      const added = models.filter((m) => !ids.has(m.id));
+      if (added.length) runtime.registerProvider(provider, { models: [...(current as readonly ModelConfig[]), ...added] });
+    }
+  } catch (e) {
+    throw Error(`${file}: ${(e as Error).message}`);
+  }
 }
 
 function durableTool(def: ToolDefinition, tool: ReturnType<typeof wrapRegisteredTool>): ToolRegistration {

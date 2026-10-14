@@ -48,6 +48,11 @@ test("DPI_PROVIDER=pi: Pi's models, default model, skills, AGENTS.md and allowli
   await writeFile(join(agentDir, "extensions", "fake.ts"), FAKE_EXTENSION);
   const policyFile = join(t.root, "policy.ts");
   await writeFile(policyFile, POLICY_EXTENSION);
+  // extra-models.json: m3 joins provider local; m1 is already there and stays as models.json defines it.
+  const extra = { local: [{ id: "m3", name: "M3", reasoning: false, input: ["text"], contextWindow: 1000, maxTokens: 100, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }, { id: "m1", name: "dup" }] };
+  await writeFile(join(t.root, "extra-models.json"), JSON.stringify(extra));
+  const previousHome = process.env.DPI_HOME;
+  process.env.DPI_HOME = t.root;
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const options = { ...t.options, provider: "pi" as const };
@@ -61,6 +66,8 @@ test("DPI_PROVIDER=pi: Pi's models, default model, skills, AGENTS.md and allowli
     assert.equal(info.defaultModel, "m2");
     assert.deepEqual([info.models[0].provider, info.models[0].id], ["local", "m2"]);
     assert.ok(info.models.some((m) => m.provider === "local" && m.id === "m1"));
+    assert.deepEqual(info.models.filter((m) => m.provider === "local").map((m) => m.id).sort(), ["m1", "m2", "m3"]);
+    assert.equal(info.models.find((m) => m.id === "m1")?.name, "m1");
     await assert.rejects(
       () => store.create({ name: "Bad", cwd: t.work, model: { provider: "local", modelId: "nope" } }),
       /Unknown model/,
@@ -117,6 +124,8 @@ test("DPI_PROVIDER=pi: Pi's models, default model, skills, AGENTS.md and allowli
   } finally {
     await store.close();
     delete process.env.DPI_PI_EXTENSIONS;
+    if (previousHome === undefined) delete process.env.DPI_HOME;
+    else process.env.DPI_HOME = previousHome;
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previous;
     await t.cleanup();

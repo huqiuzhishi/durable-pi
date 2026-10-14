@@ -35,6 +35,8 @@ With the repo's network config, `just net up local && just backend run` does the
 | `OPENROUTER_API_KEY` | | model access, required unless `DPI_PROVIDER` is `faux` or `pi`. Without it the device lists no models. Never sent to clients |
 | `TYPESAFE_API_KEY` | | optional: `jev-damage-control` asks Jev with it, else through OpenRouter |
 
+With `DPI_PROVIDER=pi`, `<DPI_HOME>/extra-models.json` (`{"<provider>": [model, ...]}`, entries shaped like `models.json` models) adds models a provider's own config lacks. Ids the provider already has keep their definition, and a bad file stops the backend.
+
 Flags `--port`, `--host`, `--name`, `--start-dirs`, `--data-dir` and `--env-file` override the env.
 
 ## Deploy to other devices
