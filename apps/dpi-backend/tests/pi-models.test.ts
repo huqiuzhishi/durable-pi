@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
-import type { PromptInput, ToolExecutionApi } from "@earendil-works/pi-durable";
+import type { HookApi, PromptInput, ToolExecutionApi, ToolHooks } from "@earendil-works/pi-durable";
 import { tempStore } from "./helpers.js";
 
 const FAKE_EXTENSION = `export default function (pi) {
@@ -16,6 +16,18 @@ const FAKE_EXTENSION = `export default function (pi) {
   });
   pi.registerTool(tool("web_search"));
   pi.registerTool(tool("questionnaire"));
+}
+`;
+
+// Like the devspace security extension: a tool_call handler that resolves paths against ctx.cwd.
+const POLICY_EXTENSION = `import { resolve } from "node:path";
+export default function (pi) {
+  pi.on("tool_call", async (event, ctx) => {
+    if (event.toolName === "read" && resolve(ctx.cwd, event.input.path).endsWith("/project/secret.txt"))
+      return { block: true, reason: "Reading protected path is not allowed: " + event.input.path };
+    if (event.toolName === "bash" && event.input.command.includes("git config")) return { block: true, reason: "" };
+    if (event.toolName === "bash") event.input.command = "set -e; " + event.input.command;
+  });
 }
 `;
 
@@ -33,10 +45,15 @@ test("DPI_PROVIDER=pi: Pi's models, default model, skills, AGENTS.md and allowli
   await writeFile(join(agentDir, "skills", "hello", "SKILL.md"), "---\nname: hello\ndescription: Say hello politely.\n---\nSay hello.\n");
   await writeFile(join(agentDir, "AGENTS.md"), "Always answer in haiku.\n");
   await writeFile(join(agentDir, "extensions", "fake.ts"), FAKE_EXTENSION);
+  const policyFile = join(t.root, "policy.ts");
+  await writeFile(policyFile, POLICY_EXTENSION);
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const options = { ...t.options, provider: "pi" as const };
   const { Store } = await import("../src/store.js");
+  process.env.DPI_PI_EXTENSIONS = join(t.root, "missing.ts");
+  await assert.rejects(() => Store.open(options), /DPI_PI_EXTENSIONS: .*missing\.ts/);
+  process.env.DPI_PI_EXTENSIONS = policyFile;
   let store = await Store.open(options);
   try {
     const info = store.deviceInfo();
@@ -47,7 +64,7 @@ test("DPI_PROVIDER=pi: Pi's models, default model, skills, AGENTS.md and allowli
       () => store.create({ name: "Bad", cwd: t.work, model: { provider: "local", modelId: "nope" } }),
       /Unknown model/,
     );
-    await store.create({ name: "One", cwd: t.work, model: { provider: "local", modelId: "m1" } });
+    await store.create({ name: "One", cwd: join(t.work, "project"), model: { provider: "local", modelId: "m1" } });
 
     // The pi add-on is on by default and lists in the Extend tab.
     const { row, c } = await store.resolveAgent("one", "main");
@@ -67,7 +84,17 @@ test("DPI_PROVIDER=pi: Pi's models, default model, skills, AGENTS.md and allowli
     const search = agent.tools.find((x) => x.name === "web_search")!;
     const api = { callId: "c1", agent: async () => agent } as unknown as ToolExecutionApi;
     const result = await search.execute({ path: "notes.pdf" }, api, ctx);
-    assert.deepEqual(result.content, [{ type: "text", text: `web_search path=${join(t.work, "notes.pdf")}` }]);
+    assert.deepEqual(result.content, [{ type: "text", text: `web_search path=${join(t.work, "project", "notes.pdf")}` }]);
+
+    // DPI_PI_EXTENSIONS: its tool_call handlers guard every tool call, with the agent's cwd, and cannot be turned off.
+    assert.ok(ext.builtIn.includes("pi-policy"));
+    const policy = agent.extensions.find((e) => e.name === "pi-policy")!.hooks![0].handlers as ToolHooks;
+    const before = (name: string, args: Record<string, string>) =>
+      policy.beforeTool({ type: "toolCall", id: "t1", name, arguments: args }, { conversationId: c.id } as HookApi, ctx);
+    assert.deepEqual(await before("read", { path: "secret.txt" }), { block: "Reading protected path is not allowed: secret.txt" });
+    assert.equal(await before("read", { path: "other.txt" }), undefined);
+    assert.match((await before("bash", { command: "git config -l" }))!.block!, /blocked by .*policy\.ts/);
+    assert.deepEqual(await before("bash", { command: "ls" }), { arguments: { command: "set -e; ls" } });
 
     await store.setExtension(row, c, { name: "pi", enabled: false });
     assert.ok(!(await c.agent(ctx)).tools.some((x) => x.name === "web_search"));
@@ -77,6 +104,7 @@ test("DPI_PROVIDER=pi: Pi's models, default model, skills, AGENTS.md and allowli
     assert.equal(store.resolveSession("one").model, "m1");
   } finally {
     await store.close();
+    delete process.env.DPI_PI_EXTENSIONS;
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previous;
     await t.cleanup();

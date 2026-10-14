@@ -45,7 +45,10 @@ import { loadPi, type PiSetup } from "./pi-models.js";
 import {
   Harness,
   createRegistry,
+  defineExtension,
+  hook,
   InboxDoc,
+  ToolTask,
   type Conversation,
   type ConversationId,
   type ConversationRecord,
@@ -554,7 +557,23 @@ export class Store {
       // Custom extensions are installed but not selected: an agent turns them on in its own selection.
       const addons = createAddons({ offline: this.options.provider === "faux", pi: this.pi?.extension });
       for (const extension of addons.list) registry.install(extension);
-      const harness = await Harness.open(
+      const guard = this.pi?.guard;
+      // Always on: an agent cannot turn the device's tool policy off from the Extend tab.
+      const policy =
+        guard &&
+        defineExtension({
+          name: "pi-policy",
+          hooks: [
+            hook(ToolTask, {
+              beforeTool: async (call, api, ctx) => {
+                const agent = await (await harness.conversation(api.conversationId, ctx))?.agent(ctx);
+                return guard(call, agent?.cwd ?? row.cwd, ctx);
+              },
+            }),
+          ],
+        });
+      if (policy) registry.install(policy);
+      const harness: Harness = await Harness.open(
         await openNodeSqliteStorage(row.dbPath),
         {
           models: this.models,
@@ -565,7 +584,7 @@ export class Store {
             await tx.doc(JobRuns, c.id);
           },
           settings: {
-            extensions: [CodingTools, playground, ...(this.pi ? [this.pi.extension] : [])],
+            extensions: [CodingTools, playground, ...(this.pi ? [this.pi.extension] : []), ...(policy ? [policy] : [])],
             // Read at every use, so a PATCH .../compaction applies from the next request.
             get compaction() {
               return compaction();
