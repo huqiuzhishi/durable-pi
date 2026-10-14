@@ -41,7 +41,7 @@ import { createModels, type Models } from "@earendil-works/pi-ai/models";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { curatedModels, defaultModelId } from "./model-catalog.js";
 import { fauxModels, installFaux } from "./faux.js";
-import { loadPi, type PiSetup } from "./pi-models.js";
+import { expandSkillCommand, loadPi, type PiSetup } from "./pi-models.js";
 import {
   Harness,
   createRegistry,
@@ -271,6 +271,7 @@ export class Store {
       codeDir: CODE_DIR,
       capabilities: ["events", "docs", "demo", "jobs"],
       jobs: JOB_DEFS,
+      ...(this.pi ? { skills: this.pi.skills.map(({ name, description }) => ({ name, description })) } : {}),
     };
   }
 
@@ -873,7 +874,8 @@ export class Store {
     if (!["steer", "followUp", "reject"].includes(whenBusy)) throw invalid("whenBusy must be followUp, steer or reject");
     if (typeof body.requestId !== "string" || !body.requestId || body.requestId.length > 128)
       throw invalid("requestId is required (≤128 chars) so retries never submit twice");
-    return c.submit({ type: "input", content: body.content, requestId: body.requestId, whenBusy }, ctx);
+    const content = this.pi ? expandSkillCommand(body.content, this.pi.skills) : body.content;
+    return c.submit({ type: "input", content, requestId: body.requestId, whenBusy }, ctx);
   }
 
   async settled(h: Harness, submissionId: number, waitMs = 0, signal?: AbortSignal): Promise<SendResult> {

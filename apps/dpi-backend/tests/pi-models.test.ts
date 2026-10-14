@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import type { HookApi, PromptInput, ToolExecutionApi, ToolHooks } from "@earendil-works/pi-durable";
+import type { Skill } from "@earendil-works/pi-coding-agent";
 import { tempStore } from "./helpers.js";
 
 const FAKE_EXTENSION = `export default function (pi) {
@@ -79,6 +80,17 @@ test("DPI_PROVIDER=pi: Pi's models, default model, skills, AGENTS.md and allowli
       agent.sections.find((s) => s.key === key)!.render({ agent } as unknown as PromptInput, ctx);
     assert.match(String(await render("skills")), /hello[\s\S]*Say hello politely/);
     assert.match(String(await render("project_context")), /Always answer in haiku/);
+
+    // `/skill:<name> [request]` inlines the skill like pi; device info lists the skills for the composer menu.
+    assert.deepEqual(info.skills?.find((s) => s.name === "hello"), { name: "hello", description: "Say hello politely." });
+    const { expandSkillCommand } = await import("../src/pi-models.js");
+    const dir = join(agentDir, "skills", "hello");
+    const hello = { name: "hello", description: "", filePath: join(dir, "SKILL.md"), baseDir: dir } as Skill;
+    assert.equal(
+      expandSkillCommand("/skill:hello to Bob", [hello]),
+      `<skill name="hello" location="${hello.filePath}">\nReferences are relative to ${dir}.\n\nSay hello.\n</skill>\n\nto Bob`,
+    );
+    assert.equal(expandSkillCommand("/skill:nope hi", [hello]), "/skill:nope hi");
 
     // A relative path resolves against the agent's folder, not the backend's home.
     const search = agent.tools.find((x) => x.name === "web_search")!;

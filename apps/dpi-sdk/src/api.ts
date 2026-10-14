@@ -73,6 +73,8 @@ export interface DeviceInfo {
   capabilities: Array<"events" | "docs" | "demo" | "jobs">;
   /** Durable jobs any agent on this device can run (`POST .../demo/jobs` or the run_durable_job tool). */
   jobs?: JobDef[];
+  /** Pi skills (DPI_PROVIDER=pi). Sending `/skill:<name> [request]` inlines that skill's instructions. */
+  skills?: { name: string; description: string }[];
 }
 
 export interface DirListing {

@@ -2,6 +2,7 @@
 // logins), models.json, provider env vars, the extensions in Pi's settings (their providers and some of their tools),
 // skills and AGENTS.md files. DPI_PI_EXTENSIONS (colon-separated, like pi's --extension) adds extensions whose
 // tool_call handlers guard every durable tool call, the way a security policy guards pi's own.
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import {
@@ -10,7 +11,9 @@ import {
   formatSkillsForPrompt,
   loadProjectContextFiles,
   SessionManager,
+  stripFrontmatter,
   wrapRegisteredTool,
+  type Skill,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { Models } from "@earendil-works/pi-ai/models";
@@ -41,7 +44,17 @@ export const PI_TOOLS = [
 /** A blocking reason, or the arguments a handler rewrote. */
 export type PiGuard = (call: ToolCall, cwd: string, context: Context) => Promise<{ block?: string; arguments?: JsonObject } | undefined>;
 
-export type PiSetup = { models: Models; defaultModel?: ModelRef; extension: Extension; guard?: PiGuard };
+export type PiSetup = { models: Models; defaultModel?: ModelRef; extension: Extension; guard?: PiGuard; skills: Skill[] };
+
+/** `/skill:name args` → the skill's instructions plus args, the way pi expands it. Anything else passes through. */
+export function expandSkillCommand(text: string, skills: Skill[]) {
+  const m = text.match(/^\/skill:(\S+)\s*([\s\S]*)$/);
+  const skill = m && skills.find((s) => s.name === m[1]);
+  if (!skill) return text;
+  const body = stripFrontmatter(readFileSync(skill.filePath, "utf8")).trim();
+  const block = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
+  return m[2].trim() ? `${block}\n\n${m[2].trim()}` : block;
+}
 
 export async function loadPi(): Promise<PiSetup> {
   // The pi CLI routes fetch through HTTP(S)_PROXY and NO_PROXY; its SDK leaves that to the host.
@@ -86,7 +99,8 @@ export async function loadPi(): Promise<PiSetup> {
     .flatMap((e) => [...e.tools.values()])
     .filter((t) => PI_TOOLS.includes(t.definition.name))
     .map((t) => durableTool(t.definition, wrapRegisteredTool(t, session.extensionRunner)));
-  const skills = formatSkillsForPrompt(resourceLoader.getSkills().skills, "read").trim();
+  const allSkills = resourceLoader.getSkills().skills;
+  const skills = formatSkillsForPrompt(allSkills, "read").trim();
   const extension = defineExtension({
     name: "pi",
     tools,
@@ -104,7 +118,13 @@ export async function loadPi(): Promise<PiSetup> {
   });
   const provider = settingsManager.getDefaultProvider();
   const modelId = settingsManager.getDefaultModel();
-  return { models: modelRuntime, defaultModel: provider && modelId ? { provider, modelId } : undefined, extension, guard };
+  return {
+    models: modelRuntime,
+    defaultModel: provider && modelId ? { provider, modelId } : undefined,
+    extension,
+    guard,
+    skills: allSkills,
+  };
 }
 
 function durableTool(def: ToolDefinition, tool: ReturnType<typeof wrapRegisteredTool>): ToolRegistration {

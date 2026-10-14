@@ -9,6 +9,7 @@ import {
   agentState,
   attempt,
   busy,
+  device,
   interrupt,
   interrupting,
   online,
@@ -19,14 +20,26 @@ import {
 const mode = ref<WhenBusy>("followUp");
 const pending = ref(false);
 
-// Typing "/" lists the slash commands; arrows pick, Tab or Enter completes.
+// Typing "/" lists the slash commands, then the device's Pi skills; arrows pick, Tab or Enter completes.
+// `/skill:<name> [request]` is sent as text and the device inlines the skill.
+type MenuItem = Pick<SlashCommand, "name" | "args" | "description">;
 const menuIndex = ref(0);
 const menuClosed = ref(false);
-const matches = computed(() => {
+const skills = computed<MenuItem[]>(() =>
+  (device.value?.info?.skills ?? []).map((s) => ({
+    name: `skill:${s.name}`,
+    args: "[request]",
+    description: s.description.length > 90 ? `${s.description.slice(0, 89)}…` : s.description,
+  })),
+);
+const matches = computed<MenuItem[]>(() => {
   const m = ui.composer.match(/^\/(\S*)$/);
-  return m && !menuClosed.value
-    ? commands.filter((c) => c.name.startsWith(m[1].toLowerCase()))
-    : [];
+  if (!m || menuClosed.value) return [];
+  const q = m[1].toLowerCase();
+  return [
+    ...commands.filter((c) => c.name.startsWith(q)),
+    ...skills.value.filter((s) => s.name.startsWith(q) || s.name.startsWith(`skill:${q}`)),
+  ];
 });
 watch(
   () => ui.composer,
@@ -36,7 +49,7 @@ watch(
   },
 );
 // Enter on a fully typed name runs it unless it needs an argument; otherwise the name completes.
-async function pick(command: SlashCommand, enter = false) {
+async function pick(command: MenuItem, enter = false) {
   const runNow =
     !command.args || (enter && command.args.startsWith("[") && ui.composer === `/${command.name}`);
   if (!runNow) ui.composer = `/${command.name} `;
