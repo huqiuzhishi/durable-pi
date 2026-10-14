@@ -1801,12 +1801,6 @@ svg {
   color: #ffadb8;
   flex-shrink: 0;
 }
-.pi-user .message-label {
-  justify-content: flex-end;
-}
-.pi-user .user-message {
-  text-align: right;
-}
 .state-json-actions {
   display: flex;
   justify-content: flex-end;
