@@ -232,9 +232,10 @@ just net logs <id>       # tail the service log
 just net restart <id>    # restart the service
 just net rotate <id>     # new token on the device, then re-register
 just net destroy <id>    # exe-dev only; asks first; refuses VMs not in the YAML
-just connect [id]        # one terminal: ssh tunnel when the url is a local port, sync and restart only on changes,
-                         # this machine's backend, the hub, the browser; Ctrl-C stops what it started
-just connect <id> --deploy   # same, with the full `up` (npm ci, env, service) first
+just connect [id...]     # one terminal: ssh tunnel when the url is a local port, sync and restart only on changes,
+                         # this machine's backend, the hub, the browser; Ctrl-C stops what it started.
+                         # No ids and several remote devices: fzf picks (Tab selects more than one)
+just connect <id...> --deploy   # same, with the full `up` (npm ci, env, service) first
 ```
 
 Every line of a device's `~/.dpi/backend.env` traces to the YAML: `DPI_PORT`, `DPI_HOST` and `DPI_START_DIRS` from `port`, `host` and `start_dirs`, secrets named in `env_keys` (values read from your `.env`), plain settings from `env`, the device id as `DPI_DEVICE_NAME`, and a `DPI_TOKEN` generated on the first `up`. New sessions start in `start_dirs` (default `~/dpi-work`, created if missing), and any existing folder on the device works as a session's working directory. The hub classifies each device as `online`, `checking`, `offline`, `unauthorized`, `mismatch` (the URL now answers with a different device identity) or `incompatible`. An offline device keeps its last tree, dimmed, with the exact terminal fix for its kind.

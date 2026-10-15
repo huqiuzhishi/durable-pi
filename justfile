@@ -25,7 +25,7 @@ mod proactive 'just/proactive'
 default:
     @just --list
 
-# Tunnel to a device, sync it, start this machine's backend and the web UI. --deploy forces a full redeploy
+# Tunnel to devices (fzf picks when no ids), sync them, start this machine's backend and the web UI. --deploy forces a full redeploy
 connect *ARGS:
     cd apps/dpi-sdk && NODE_NO_WARNINGS=1 npx tsx scripts/connect.ts {{ ARGS }}
 
