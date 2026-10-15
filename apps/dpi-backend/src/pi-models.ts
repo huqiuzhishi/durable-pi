@@ -58,6 +58,9 @@ export function expandSkillCommand(text: string, skills: Skill[]) {
 }
 
 export async function loadPi(): Promise<PiSetup> {
+  // Headless backend must not inherit caller's tmux pane or register with tmux/workmux extensions.
+  delete process.env.TMUX;
+  delete process.env.TMUX_PANE;
   // The pi CLI routes fetch through HTTP(S)_PROXY and NO_PROXY; its SDK leaves that to the host.
   if (process.env.HTTPS_PROXY || process.env.HTTP_PROXY) setGlobalDispatcher(new EnvHttpProxyAgent());
   const policyPaths = (process.env.DPI_PI_EXTENSIONS ?? "").split(":").filter(Boolean).map((p) => resolve(p));

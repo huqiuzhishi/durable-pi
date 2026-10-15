@@ -55,10 +55,14 @@ test("DPI_PROVIDER=pi: Pi's models, default model, skills, AGENTS.md and allowli
   process.env.DPI_HOME = t.root;
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = agentDir;
+  process.env.TMUX = "/tmp/tmux-test,123,0";
+  process.env.TMUX_PANE = "%999";
   const options = { ...t.options, provider: "pi" as const };
   const { Store } = await import("../src/store.js");
   process.env.DPI_PI_EXTENSIONS = join(t.root, "missing.ts");
   await assert.rejects(() => Store.open(options), /DPI_PI_EXTENSIONS: .*missing\.ts/);
+  assert.equal(process.env.TMUX, undefined);
+  assert.equal(process.env.TMUX_PANE, undefined);
   process.env.DPI_PI_EXTENSIONS = policyFile;
   let store = await Store.open(options);
   try {

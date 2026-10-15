@@ -8,6 +8,9 @@ import { bearerAuth } from "./auth.js";
 import { errorMiddleware } from "./errors.js";
 import { v1 } from "./routes.js";
 
+delete process.env.TMUX;
+delete process.env.TMUX_PANE;
+
 const config = loadConfig();
 const store = await Store.open({
   dataDir: config.dataDir,
