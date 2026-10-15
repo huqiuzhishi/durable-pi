@@ -21,6 +21,17 @@ export const expanded = ref(new Set<string>());
 export const treeWidth = ref(300);
 /** Which side panels are expanded (persisted). Collapsed panels shrink to an icon rail. */
 export const layout = reactive({ tree: true, inspector: true });
+export const THEMES = [
+  { id: "rose", label: "Rose" },
+  { id: "catppuccin-mocha", label: "Catppuccin Mocha" },
+  { id: "gruvbox", label: "Gruvbox" },
+  { id: "light", label: "Light" },
+] as const;
+export type ThemeId = (typeof THEMES)[number]["id"];
+const isTheme = (v: unknown): v is ThemeId => THEMES.some((t) => t.id === v);
+const savedTheme = typeof localStorage !== "undefined" ? localStorage.getItem("dpi.theme") : null;
+export const theme = ref<ThemeId>(isTheme(savedTheme) ? savedTheme : "rose");
+if (typeof document !== "undefined") document.documentElement.dataset.theme = theme.value;
 const uiLoaded = ref(false);
 
 export const deviceId = computed(() => selected.value?.deviceId);
@@ -109,16 +120,25 @@ watch(
 );
 watch(treeWidth, (v) => uiLoaded.value && saveLater("tree.width", v));
 watch(layout, (v) => uiLoaded.value && saveLater("layout.panels", { ...v }));
+watch(theme, (v) => {
+  if (typeof document !== "undefined") document.documentElement.dataset.theme = v;
+  try {
+    localStorage.setItem("dpi.theme", v);
+  } catch {}
+  if (uiLoaded.value) void hub.uiSet("ui.theme", v).catch(() => {});
+});
 
 export async function boot() {
   stream.start();
   try {
-    const [net, sel, width, panels] = await Promise.all([
+    const [net, sel, width, panels, saved] = await Promise.all([
       hub.network(),
       hub.uiGet<AgentTarget>("tree.selected"),
       hub.uiGet<number>("tree.width"),
       hub.uiGet<{ tree: boolean; inspector: boolean }>("layout.panels"),
+      hub.uiGet<ThemeId>("ui.theme"),
     ]);
+    if (isTheme(saved)) theme.value = saved;
     if (panels) Object.assign(layout, panels);
     configFile.value = net.configFile;
     if (!network.model.devices.length)

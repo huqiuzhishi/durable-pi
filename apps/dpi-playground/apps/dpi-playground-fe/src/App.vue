@@ -42,6 +42,8 @@ import {
   panelHotkey,
   toggleTree,
   toggleInspector,
+  THEMES,
+  theme,
 } from "./client/store";
 
 const onlineCount = computed(
@@ -134,6 +136,8 @@ onBeforeUnmount(() => {
           ><i :class="{ online: streamState === 'live' }" />{{
             streamState === "live" ? "Connected" : "Reconnecting"
           }}</span
+        ><select v-model="theme" class="theme-select" aria-label="Color theme" title="Color theme">
+          <option v-for="t in THEMES" :key="t.id" :value="t.id">{{ t.label }}</option></select
         ><button
           class="icon-button"
           title="How this works"

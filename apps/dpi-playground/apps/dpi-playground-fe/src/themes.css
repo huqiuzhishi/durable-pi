@@ -1,0 +1,191 @@
+/* Color themes for the Durable Pi hub. Each theme sets the same semantic token palette;
+   components and stylesheets reference only these variables. */
+
+:root,
+:root[data-theme="rose"] {
+  color-scheme: dark;
+  --bg-inset: #120d0e;
+  --bg: #161011;
+  --bg-panel: #191213;
+  --surface: #241819;
+  --surface-2: #2b2021;
+  --surface-3: #3a2628;
+  --hover: #ffffff0a;
+  --backdrop: #0d0808bd;
+  --line: #332829;
+  --border: #453536;
+  --border-strong: #68474e;
+  --text: #f2eeee;
+  --secondary: #c9a87c;
+  --muted: var(--secondary);
+  --faint: var(--secondary);
+  --dim: #756062;
+  --accent: #ff8997;
+  --accent-soft: #ff899718;
+  --accent-border: #5a3a3e;
+  --accent-ink: #1a1012;
+  --primary-bg: #b9283c;
+  --primary-hover: #cf354a;
+  --primary-border: #df5363;
+  --primary-ink: #ffffff;
+  --ok: #6fcf97;
+  --ok-soft: #24543a;
+  --ok-border: #3f6b52;
+  --warn: #f2c94c;
+  --warn-soft: #2c2514;
+  --warn-border: #6b5a24;
+  --danger: #ff6b6b;
+  --danger-soft: #39232580;
+  --danger-border: #8d4a52;
+  --shadow: #0007;
+  --tk-fn: #ffd38a;
+  --tk-prop: #9ed8cf;
+  --tk-type: #8fb6ff;
+  --tk-str: #e6b98f;
+  --tk-num: #d4a5ff;
+  --tk-comment: #8d7778;
+  --tk-punct: #b8a6a7;
+}
+
+:root[data-theme="catppuccin-mocha"] {
+  color-scheme: dark;
+  --bg-inset: #11111b;
+  --bg: #1e1e2e;
+  --bg-panel: #181825;
+  --surface: #262637;
+  --surface-2: #313244;
+  --surface-3: #45475a;
+  --hover: #cdd6f412;
+  --backdrop: #11111bbd;
+  --line: #313244;
+  --border: #45475a;
+  --border-strong: #585b70;
+  --text: #cdd6f4;
+  --secondary: #a6adc8;
+  --dim: #6c7086;
+  --accent: #cba6f7;
+  --accent-soft: #cba6f71f;
+  --accent-border: #584b78;
+  --accent-ink: #11111b;
+  --primary-bg: #7c3aed;
+  --primary-hover: #8b5cf6;
+  --primary-border: #cba6f7;
+  --primary-ink: #ffffff;
+  --ok: #a6e3a1;
+  --ok-soft: #243b2b;
+  --ok-border: #406b46;
+  --warn: #f9e2af;
+  --warn-soft: #3a3322;
+  --warn-border: #6e5f3d;
+  --danger: #f38ba8;
+  --danger-soft: #f38ba824;
+  --danger-border: #7c3f52;
+  --shadow: #0007;
+  --tk-fn: #f9e2af;
+  --tk-prop: #94e2d5;
+  --tk-type: #89b4fa;
+  --tk-str: #a6e3a1;
+  --tk-num: #fab387;
+  --tk-comment: #6c7086;
+  --tk-punct: #bac2de;
+}
+
+:root[data-theme="gruvbox"] {
+  color-scheme: dark;
+  --bg-inset: #1d2021;
+  --bg: #282828;
+  --bg-panel: #22201e;
+  --surface: #32302f;
+  --surface-2: #3c3836;
+  --surface-3: #504945;
+  --hover: #ebdbb212;
+  --backdrop: #1d2021bd;
+  --line: #3c3836;
+  --border: #504945;
+  --border-strong: #665c54;
+  --text: #ebdbb2;
+  --secondary: #bdae93;
+  --dim: #928374;
+  --accent: #fe8019;
+  --accent-soft: #fe801922;
+  --accent-border: #6e4422;
+  --accent-ink: #1d2021;
+  --primary-bg: #b54b08;
+  --primary-hover: #d65d0e;
+  --primary-border: #fe8019;
+  --primary-ink: #fbf1c7;
+  --ok: #b8bb26;
+  --ok-soft: #373918;
+  --ok-border: #5a5e1d;
+  --warn: #fabd2f;
+  --warn-soft: #3b3015;
+  --warn-border: #6e5419;
+  --danger: #fb4934;
+  --danger-soft: #fb493424;
+  --danger-border: #7c2c22;
+  --shadow: #0008;
+  --tk-fn: #fabd2f;
+  --tk-prop: #8ec07c;
+  --tk-type: #83a598;
+  --tk-str: #b8bb26;
+  --tk-num: #d3869b;
+  --tk-comment: #928374;
+  --tk-punct: #d5c4a1;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg-inset: #efeae2;
+  --bg: #faf7f2;
+  --bg-panel: #f2ede5;
+  --surface: #ffffff;
+  --surface-2: #ece6dc;
+  --surface-3: #e0d7ca;
+  --hover: #231c1d0d;
+  --backdrop: #231c1d4d;
+  --line: #e2dad0;
+  --border: #cfc4b6;
+  --border-strong: #9e8e7e;
+  --text: #231c1d;
+  --secondary: #68574c;
+  --dim: #94847a;
+  --accent: #c42840;
+  --accent-soft: #c4284014;
+  --accent-border: #dfa3ad;
+  --accent-ink: #ffffff;
+  --primary-bg: #c42840;
+  --primary-hover: #a81e33;
+  --primary-border: #a81e33;
+  --primary-ink: #ffffff;
+  --ok: #1d8045;
+  --ok-soft: #dcf2e5;
+  --ok-border: #86c9a1;
+  --warn: #9e6504;
+  --warn-soft: #f9edd4;
+  --warn-border: #dfc07a;
+  --danger: #c42b2b;
+  --danger-soft: #c42b2b14;
+  --danger-border: #dfa0a0;
+  --shadow: #231c1d18;
+  --tk-fn: #8f5400;
+  --tk-prop: #0d695e;
+  --tk-type: #1b56b8;
+  --tk-str: #1f6b36;
+  --tk-num: #732eb0;
+  --tk-comment: #85766e;
+  --tk-punct: #594b44;
+}
+
+:root[data-theme="light"] .brandmark,
+:root[data-theme="light"] .welcome-symbol {
+  filter: invert(0.86);
+}
+
+.theme-select {
+  padding: 6px 10px;
+  font-size: 14px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}

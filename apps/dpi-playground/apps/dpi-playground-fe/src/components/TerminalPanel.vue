@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // The session's tmux terminal on its device (see the hub's terminal.ts). Closing the panel or the tab only
 // detaches; reopening reattaches to the same shell, nvim and all.
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { theme } from "../client/store";
 
 const props = defineProps<{ deviceId: string; sessionId: string; cwd: string }>();
 const host = ref<HTMLElement>();
@@ -12,13 +13,27 @@ let ws: WebSocket | undefined;
 let term: Terminal | undefined;
 let observer: ResizeObserver | undefined;
 
+function termTheme() {
+  const s = getComputedStyle(document.documentElement);
+  const v = (k: string, fallback: string) => s.getPropertyValue(k).trim() || fallback;
+  return {
+    background: v("--surface", "#241819"),
+    foreground: v("--text", "#f2eeee"),
+    cursor: v("--accent", "#ff8997"),
+  };
+}
+
+watch(theme, () => {
+  if (term) term.options.theme = termTheme();
+});
+
 onMounted(() => {
   term = new Terminal({
     fontFamily: '"JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "IBM Plex Mono", monospace',
     fontSize: 14,
     cursorBlink: true,
     scrollback: 5000,
-    theme: { background: "#1e1718", foreground: "#f3e7e1", cursor: "#ff8997" },
+    theme: termTheme(),
   });
   const fit = new FitAddon();
   term.loadAddon(fit);

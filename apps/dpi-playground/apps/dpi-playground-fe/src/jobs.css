@@ -5,23 +5,23 @@
 .job-run {
   min-width: 0;
   margin: 14px 0 6px;
-  border: 1px solid #5a3a3e;
+  border: 1px solid var(--accent-border);
   border-left: 4px solid var(--accent);
-  background: linear-gradient(180deg, #2a1b1d, #221617);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
   border-radius: 9px;
   padding: 16px 18px 14px;
-  color: #f2eeee;
+  color: var(--text);
 }
 .job-run.is-completed {
-  border-left-color: #6fcf97;
+  border-left-color: var(--ok);
 }
 .job-run.is-waiting {
-  border-left-color: #f2c94c;
+  border-left-color: var(--warn);
 }
 .job-run.is-failed,
 .job-run.is-declined,
 .job-run.is-aborted {
-  border-left-color: #8d6a6d;
+  border-left-color: var(--dim);
 }
 .job-run-head {
   display: flex;
@@ -35,7 +35,7 @@
   height: 40px;
   flex: none;
   border-radius: 9px;
-  background: #3d2629;
+  background: var(--surface-3);
   color: var(--accent);
 }
 .job-run-titles {
@@ -62,7 +62,7 @@
   align-items: center;
   gap: 5px;
   letter-spacing: 0;
-  color: #f2eeee;
+  color: var(--text);
 }
 .job-run-status {
   display: inline-flex;
@@ -71,7 +71,7 @@
   flex: none;
   padding: 4px 9px;
   border-radius: 5px;
-  background: #352728;
+  background: var(--surface-2);
   font-size: 16px;
 }
 .job-run-status i {
@@ -87,10 +87,10 @@
   animation: pulse 1.5s infinite;
 }
 .job-run-status.waiting {
-  color: #f2c94c;
+  color: var(--warn);
 }
 .job-run-status.completed {
-  color: #6fcf97;
+  color: var(--ok);
 }
 .job-run-about {
   margin: 12px 0 8px;
@@ -107,10 +107,10 @@
 }
 .job-run-input,
 .job-run-resumed {
-  color: #f2eeee;
+  color: var(--text);
 }
 .job-run-resumed {
-  color: #f2c94c;
+  color: var(--warn);
 }
 
 /* The phase stepper wraps onto new lines instead of scrolling. */
@@ -130,16 +130,16 @@
 .job-stepper li:not(:last-child)::after {
   content: "→";
   margin: 0 8px;
-  color: #8d6a6d;
+  color: var(--dim);
 }
 .job-chip {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   padding: 4px 11px 4px 4px;
-  border: 1px solid #4a3638;
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background: #241819;
+  background: var(--surface);
   font-size: 16px;
 }
 .job-step-dot {
@@ -148,36 +148,36 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #3a2a2c;
+  background: var(--surface-3);
   font-family: "IBM Plex Mono", monospace;
   font-size: 15px;
 }
 .ph-done .job-chip {
-  border-color: #3f6b52;
+  border-color: var(--ok-border);
 }
 .ph-done .job-step-dot {
-  background: #24543a;
-  color: #b9f2cf;
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 .ph-running .job-chip {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px #ff899722;
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .ph-running .job-step-dot {
-  background: #5a2a31;
+  background: var(--surface-3);
   color: var(--accent);
 }
 .ph-waiting .job-chip {
-  border-color: #f2c94c;
-  box-shadow: 0 0 0 3px #f2c94c22;
+  border-color: var(--warn);
+  box-shadow: 0 0 0 3px var(--warn-soft);
 }
 .ph-waiting .job-step-dot {
-  background: #574719;
-  color: #f2c94c;
+  background: var(--warn-soft);
+  color: var(--warn);
 }
 .ph-failed .job-chip,
 .ph-aborted .job-chip {
-  border-color: #8d4a52;
+  border-color: var(--danger-border);
 }
 .job-stepper .ph-skipped {
   opacity: 0.55;
@@ -193,15 +193,15 @@
   gap: 6px;
 }
 .job-phase {
-  border: 1px solid #3c2b2d;
+  border: 1px solid var(--line);
   border-radius: 7px;
-  background: #1f1415;
+  background: var(--bg-panel);
 }
 .job-phase.ph-running {
-  border-color: #6a3a41;
+  border-color: var(--accent-border);
 }
 .job-phase.ph-waiting {
-  border-color: #6b5a24;
+  border-color: var(--warn-border);
 }
 .job-phase.ph-skipped,
 .job-phase.ph-pending {
@@ -227,7 +227,7 @@
 .job-phase-summary {
   flex: 1;
   min-width: 160px;
-  color: #e6d7d8;
+  color: var(--text);
 }
 .job-phase-time {
   margin-left: auto;
@@ -279,13 +279,13 @@
   white-space: nowrap;
   font-family: "IBM Plex Mono", monospace;
   font-size: 16px;
-  background: #2c1e20;
+  background: var(--surface-2);
   border-radius: 4px;
   padding: 1px 6px;
 }
 .job-steps .k-tool code {
   flex: none;
-  border: 1px solid #5a3a3e;
+  border: 1px solid var(--accent-border);
 }
 .job-step-kind {
   color: var(--secondary);
@@ -296,7 +296,7 @@
 }
 .job-step-text {
   min-width: 0;
-  color: #f2eeee;
+  color: var(--text);
 }
 .job-step-args {
   min-width: 0;
@@ -315,13 +315,13 @@
   color: var(--secondary);
 }
 .job-steps .st-done .job-step-state svg {
-  color: #6fcf97;
+  color: var(--ok);
 }
 .job-steps .st-error .job-step-state svg {
-  color: #ff8997;
+  color: var(--accent);
 }
 .job-steps .st-waiting .job-step-state svg {
-  color: #f2c94c;
+  color: var(--warn);
 }
 .job-steps pre {
   margin: 4px 0 2px 25px;
@@ -329,10 +329,10 @@
   max-height: 180px;
   overflow: auto;
   white-space: pre-wrap;
-  background: #180f10;
+  background: var(--bg-inset);
   border-radius: 5px;
   font-size: 16px;
-  color: #e6d7d8;
+  color: var(--text);
 }
 .job-step-link {
   margin: 2px 0 0 25px;
@@ -341,15 +341,15 @@
 .job-approval {
   margin-top: 12px;
   padding: 12px 14px;
-  border: 1px solid #8a7330;
-  background: #2c2514;
+  border: 1px solid var(--warn-border);
+  background: var(--warn-soft);
   border-radius: 8px;
 }
 .job-approval > div:first-child {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #f2c94c;
+  color: var(--warn);
 }
 .job-approval p {
   margin: 6px 0 10px;
@@ -368,7 +368,7 @@
   gap: 8px 14px;
   margin-top: 12px;
   padding-top: 10px;
-  border-top: 1px solid #3c2b2d;
+  border-top: 1px solid var(--line);
   font-size: 16px;
   color: var(--secondary);
 }
@@ -382,9 +382,9 @@
 .job-def {
   margin-top: 12px;
   padding: 13px;
-  border: 1px solid #453536;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #241819;
+  background: var(--surface);
 }
 .job-def-head {
   display: flex;
@@ -417,7 +417,7 @@
   align-items: center;
   gap: 5px;
   padding: 3px 9px 3px 3px;
-  border: 1px solid #4a3638;
+  border: 1px solid var(--border);
   border-radius: 999px;
   font-size: 16px;
 }
@@ -427,14 +427,14 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #3a2a2c;
+  background: var(--surface-3);
   font-family: "IBM Plex Mono", monospace;
   font-size: 14px;
 }
 .job-chain li:not(:last-child)::after {
   content: "→";
   margin-left: 4px;
-  color: #8d6a6d;
+  color: var(--dim);
 }
 .job-def-meta {
   display: flex;
@@ -476,17 +476,17 @@
   gap: 4px 8px;
   padding: 7px 10px;
   margin-left: calc(var(--depth) * 18px);
-  border: 1px solid #3c2b2d;
-  border-left: 3px solid #5a3a3e;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent-border);
   border-radius: 6px;
-  background: #211617;
+  background: var(--surface);
   font-size: 16px;
 }
 .task-row[data-task-kind="pi.tool"] {
   border-left-color: var(--accent);
 }
 .task-row[data-task-kind^="demo.job."] {
-  border-left-color: #f2c94c;
+  border-left-color: var(--warn);
 }
 .task-row small {
   width: 100%;
@@ -527,7 +527,7 @@
   align-items: center;
   gap: 6px;
   margin-left: auto;
-  color: #f2c94c;
+  color: var(--warn);
 }
 .context-compacting i {
   width: 7px;
@@ -541,8 +541,8 @@
   height: 14px;
   margin: 40px 0 44px;
   border-radius: 7px;
-  background: #2d2122;
-  border: 1px solid #453536;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   touch-action: none;
 }
 .context-bar.off .context-marker {
@@ -552,11 +552,11 @@
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: 7px 0 0 7px;
-  background: linear-gradient(90deg, #8a3a45, var(--accent));
+  background: linear-gradient(90deg, var(--primary-bg), var(--accent));
   transition: width 0.3s;
 }
 .context-fill.hot {
-  background: linear-gradient(90deg, #8a3a45, #f2c94c);
+  background: linear-gradient(90deg, var(--primary-bg), var(--warn));
 }
 .context-reserve {
   position: absolute;
@@ -564,8 +564,8 @@
   right: 0;
   bottom: 0;
   border-radius: 0 7px 7px 0;
-  background: repeating-linear-gradient(135deg, #ffffff10 0 5px, transparent 5px 10px);
-  border-left: 1px solid #8d6a6d;
+  background: repeating-linear-gradient(135deg, var(--hover) 0 5px, transparent 5px 10px);
+  border-left: 1px solid var(--dim);
 }
 .context-marker {
   position: absolute;
@@ -575,7 +575,7 @@
   padding: 0;
   margin-left: -2px;
   border-radius: 2px;
-  background: #f2c94c;
+  background: var(--warn);
   cursor: ew-resize;
   touch-action: none;
 }
@@ -585,7 +585,7 @@
   inset: -4px -10px;
 }
 .context-marker.wait {
-  background: #f2eeee;
+  background: var(--text);
 }
 .context-marker-label {
   position: absolute;
@@ -594,7 +594,7 @@
   white-space: nowrap;
   font-size: 16px;
   font-family: "IBM Plex Mono", monospace;
-  color: #f2c94c;
+  color: var(--warn);
   pointer-events: none;
 }
 .context-marker.auto .context-marker-label {
@@ -602,7 +602,7 @@
 }
 .context-marker.wait .context-marker-label {
   top: calc(100% + 4px);
-  color: #f2eeee;
+  color: var(--text);
 }
 /* Labels near either end grow inward so they stay inside the panel. */
 .context-marker.label-start .context-marker-label {
@@ -622,7 +622,7 @@
   align-items: center;
   gap: 4px;
   padding: 0;
-  color: #f2c94c;
+  color: var(--warn);
   font-size: 16px;
   letter-spacing: 0;
 }

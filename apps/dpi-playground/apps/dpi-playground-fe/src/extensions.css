@@ -3,13 +3,13 @@
 .ext-card {
   margin-top: 12px;
   padding: 13px 14px;
-  border: 1px solid #453536;
-  border-left: 3px solid #5a3a3e;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-border);
   border-radius: 8px;
-  background: #241819;
+  background: var(--surface);
 }
 .ext-card.on {
-  border-left-color: #6fcf97;
+  border-left-color: var(--ok);
 }
 .ext-head {
   display: flex;
@@ -40,7 +40,7 @@
   list-style: none;
   margin: 12px 0 0;
   padding: 10px 0 0;
-  border-top: 1px solid #3c2b2d;
+  border-top: 1px solid var(--line);
   display: grid;
   gap: 10px;
 }
@@ -80,7 +80,7 @@
   margin: 6px 0 0;
   padding: 9px;
   white-space: pre-wrap;
-  background: #180f10;
+  background: var(--bg-inset);
   border-radius: 6px;
   font-size: 16px;
 }
@@ -97,8 +97,8 @@
 .tool-row summary .tag.tool-disabled {
   margin-left: 2px;
   margin-right: auto;
-  color: #f2c94c;
-  border-color: #6b5a24;
+  color: var(--warn);
+  border-color: var(--warn-border);
 }
 .tool-row summary .tag.tool-disabled + .tag {
   margin-left: auto;
