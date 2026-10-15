@@ -94,14 +94,31 @@ echo "node: $(nvm which ${device.node})"`,
   ctx.log(result.stdout.trim());
 }
 
-async function deploy(device: NetDevice, ctx: DriverContext) {
+/** rsync the code, installing rsync first on apt hosts that lack it (container root filesystems reset on restart). */
+async function syncApps(device: NetDevice, ctx: DriverContext, extra: string[] = []) {
   const code = device.codeDir.replace(/^~\//, "");
+  const sync = () => rsync(device, ["apps/dpi-backend", "apps/dpi-sdk"], `${code}/apps/`, ctx.config.root, extra);
+  try {
+    return await sync();
+  } catch (e) {
+    const installed = await exec(
+      device,
+      `if ! command -v rsync >/dev/null && command -v apt-get >/dev/null; then sudo -n apt-get update -qq >/dev/null && sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -qq rsync >/dev/null && echo installed; fi`,
+      { timeoutMs: 300_000 },
+    );
+    if (!installed.stdout.includes("installed")) throw e;
+    ctx.log(`sync ${device.id}: installed rsync`);
+    return sync();
+  }
+}
+
+async function deploy(device: NetDevice, ctx: DriverContext) {
   ctx.log(`deploy ${device.id}: sync apps/dpi-backend + apps/dpi-sdk → ${device.codeDir}/apps`);
   await exec(
     device,
     `mkdir -p "${shPath(device.codeDir)}/apps" "${shPath(device.codeDir)}/e2e" "${shPath(device.homeDir)}" && chmod 700 "${shPath(device.homeDir)}"`,
   );
-  await rsync(device, ["apps/dpi-backend", "apps/dpi-sdk"], `${code}/apps/`, ctx.config.root);
+  await syncApps(device, ctx);
   ctx.log(`deploy ${device.id}: npm ci`);
   await exec(
     device,
@@ -115,8 +132,7 @@ async function deploy(device: NetDevice, ctx: DriverContext) {
  * Returns whether anything on the device changed, so the caller restarts only then.
  */
 export async function syncCode(device: NetDevice, ctx: DriverContext) {
-  const code = device.codeDir.replace(/^~\//, "");
-  const out = await rsync(device, ["apps/dpi-backend", "apps/dpi-sdk"], `${code}/apps/`, ctx.config.root, ["--itemize-changes"]);
+  const out = await syncApps(device, ctx, ["--itemize-changes"]);
   const changed = out.stdout
     .split("\n")
     .filter((l) => /^([<>c]f|\*deleting)/.test(l))
@@ -137,7 +153,9 @@ export async function serviceInstalled(device: NetDevice) {
   const check =
     device.service === "launchd"
       ? `test -f "$HOME/Library/LaunchAgents/${SERVICE_LABEL}.plist"`
-      : `systemctl cat ${SYSTEMD_UNIT} >/dev/null 2>&1`;
+      : device.service === "nohup"
+        ? `test -f "${shPath(device.homeDir)}/dpi-backend.sh"`
+        : `systemctl cat ${SYSTEMD_UNIT} >/dev/null 2>&1`;
   const out = await exec(device, `if ${check} && [ -d "${shPath(device.codeDir)}/apps/dpi-backend" ]; then echo yes; fi`);
   return out.stdout.includes("yes");
 }
@@ -186,6 +204,25 @@ function fill(template: string, values: Record<string, string>) {
   });
 }
 
+/** The pid file names the setsid process group; a stale one (after a reboot) may name an unrelated process. */
+function nohupStop(device: NetDevice) {
+  const pid = `${shPath(device.homeDir)}/dpi-backend.pid`;
+  return `if [ -s "${pid}" ] && ps -o args= -p "$(cat "${pid}")" 2>/dev/null | grep -q dpi-backend.sh; then
+  G=$(cat "${pid}")
+  kill -TERM -- "-$G" 2>/dev/null || true
+  for i in $(seq 40); do kill -0 -- "-$G" 2>/dev/null || break; sleep 0.5; done
+  kill -KILL -- "-$G" 2>/dev/null || true
+fi
+rm -f "${pid}"`;
+}
+
+function nohupStart(device: NetDevice) {
+  const home = shPath(device.homeDir);
+  return `cd "$HOME"
+setsid nohup sh "${home}/dpi-backend.sh" >/dev/null 2>&1 </dev/null &
+echo $! > "${home}/dpi-backend.pid"`;
+}
+
 async function installService(device: NetDevice, ctx: DriverContext) {
   if (!device.service) throw Error(`${device.id} has no service in dpi-network.yaml`);
   const f = await facts(device);
@@ -226,6 +263,17 @@ launchctl bootout gui/$(id -u)/${SERVICE_LABEL} 2>/dev/null || true
 for i in 1 2 3 4 5; do launchctl bootstrap gui/$(id -u) "$P" 2>/dev/null && break; sleep 1; done
 launchctl print gui/$(id -u)/${SERVICE_LABEL} >/dev/null && echo "launchd ok"`,
     );
+  } else if (device.service === "nohup") {
+    const script = fill(readFileSync(join(deployDir, "dpi-backend.sh"), "utf8"), values);
+    await exec(
+      device,
+      `cat > "${shPath(device.homeDir)}/dpi-backend.sh" <<'DPI_SH_EOF'
+${script}
+DPI_SH_EOF
+${nohupStop(device)}
+${nohupStart(device)}
+echo "nohup ok"`,
+    );
   } else {
     const unit = fill(readFileSync(join(deployDir, "dpi-backend.service"), "utf8"), values);
     await exec(
@@ -250,6 +298,8 @@ async function serviceCommand(device: NetDevice, action: "restart" | "down") {
         ? `launchctl kickstart -k gui/$(id -u)/${SERVICE_LABEL}`
         : `launchctl bootout gui/$(id -u)/${SERVICE_LABEL} 2>/dev/null || true`,
     );
+  if (device.service === "nohup")
+    return exec(device, action === "restart" ? `${nohupStop(device)}\n${nohupStart(device)}` : nohupStop(device));
   if (device.service === "systemd")
     return exec(device, `sudo -n systemctl ${action === "restart" ? "restart" : "stop"} ${SYSTEMD_UNIT}`);
   throw Error(`${device.id} has no service; it runs with \`just backend run\``);

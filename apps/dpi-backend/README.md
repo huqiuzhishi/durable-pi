@@ -54,7 +54,7 @@ just net probe <id>    # /healthz 200 and /v1/device 401 without a token
 | Kind | Service | Notes |
 |---|---|---|
 | `local` | none (`just backend run`) or launchd/systemd | binds 127.0.0.1 |
-| `ssh` | `launchd` → `~/Library/LaunchAgents/dev.dpi.backend.plist`; `systemd` → `/etc/systemd/system/dpi-backend.service` | binds 0.0.0.0 by default; needs passwordless ssh; systemd needs `sudo -n` |
+| `ssh` | `launchd` → `~/Library/LaunchAgents/dev.dpi.backend.plist`; `systemd` → `/etc/systemd/system/dpi-backend.service`; `nohup` (no service manager, e.g. a container) → `~/.dpi/dpi-backend.sh` restart loop under setsid, not restarted after a reboot (`just connect` starts it) | binds 0.0.0.0 by default; needs passwordless ssh; systemd needs `sudo -n` |
 | `exe-dev` | systemd | VM created on demand; the HTTPS proxy is set public, so the token is the gate |
 | `url` | none | connect only: `just net register <id> --token <t>` |
 

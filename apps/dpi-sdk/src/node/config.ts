@@ -6,7 +6,8 @@ import type { DeviceKind } from "../api.js";
 import { DEVICE_ID, DEVICE_KINDS, NetworkRegistry, normalizeUrl } from "./registry.js";
 
 export const NETWORK_FILE = "dpi-network.yaml";
-export type ServiceKind = "launchd" | "systemd";
+/** nohup: a restart loop under setsid for hosts with neither, such as containers; it does not survive a reboot. */
+export type ServiceKind = "launchd" | "systemd" | "nohup";
 
 /** Where new sessions start when a device sets no start_dirs (created by `just net up`). */
 export const DEFAULT_START_DIR = "~/dpi-work";
@@ -116,7 +117,8 @@ export function parseNetworkConfig(text: string, file = NETWORK_FILE): NetworkCo
     };
     device.env = envMap(defaults.env, (value as Raw).env, device.envKeys, where);
     if (d.service !== undefined) {
-      if (d.service !== "launchd" && d.service !== "systemd") throw Error(`${where}.service must be launchd or systemd`);
+      if (d.service !== "launchd" && d.service !== "systemd" && d.service !== "nohup")
+        throw Error(`${where}.service must be launchd, systemd or nohup`);
       device.service = d.service;
     }
     if (kind === "ssh") device.ssh = str(d.ssh, `${where}.ssh`);

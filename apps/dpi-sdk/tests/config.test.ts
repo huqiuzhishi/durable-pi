@@ -23,7 +23,7 @@ test("validation rejects bad kinds, missing fields and bad ids; exe-dev derives 
   assert.throws(() => parseNetworkConfig("devices:\n  a:\n    kind: cloud\n    url: http://x"), /kind must be one of/);
   assert.throws(() => parseNetworkConfig("devices:\n  a:\n    kind: ssh\n    url: http://x\n    service: launchd"), /\.ssh must be/);
   assert.throws(() => parseNetworkConfig("devices:\n  a:\n    kind: ssh\n    ssh: u@h\n    url: http://x"), /service is required/);
-  assert.throws(() => parseNetworkConfig("devices:\n  a:\n    kind: ssh\n    ssh: u@h\n    service: cron\n    url: http://x"), /launchd or systemd/);
+  assert.throws(() => parseNetworkConfig("devices:\n  a:\n    kind: ssh\n    ssh: u@h\n    service: cron\n    url: http://x"), /launchd, systemd or nohup/);
   assert.throws(() => parseNetworkConfig("devices:\n  Bad_Id:\n    kind: url\n    url: http://x"), /id must match/);
   assert.throws(() => parseNetworkConfig("devices:\n  a:\n    kind: url"), /url must be/);
   const c = parseNetworkConfig("defaults:\n  port: 5000\n  start_dirs: ['~/w']\ndevices:\n  vm:\n    kind: exe-dev\n    vm: my-vm-1\n  here:\n    kind: local");

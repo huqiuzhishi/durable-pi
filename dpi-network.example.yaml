@@ -50,7 +50,7 @@ devices:
   #   name: Mac mini
   #   kind: ssh
   #   ssh: me@my-mac-mini.local
-  #   service: launchd               # systemd on Linux (needs passwordless sudo)
+  #   service: launchd               # systemd on Linux (needs passwordless sudo); nohup where neither runs
   #   url: http://my-mac-mini.local:4780
   #   start_dirs: ["~/dpi-work"]
 
