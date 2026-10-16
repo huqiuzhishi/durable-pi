@@ -6,7 +6,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import "@xterm/xterm/css/xterm.css";
-import { theme } from "../client/store";
+import { theme, UI_FONTS, uiFont } from "../client/store";
 
 const props = defineProps<{ deviceId: string; sessionId: string; cwd: string }>();
 const host = ref<HTMLElement>();
@@ -24,13 +24,22 @@ function termTheme() {
   };
 }
 
-watch(theme, () => {
-  if (term) term.options.theme = termTheme();
+const terminalFont = () => {
+  const selected = UI_FONTS.find((font) => font.id === uiFont.value)!;
+  return "mono" in selected
+    ? selected.css
+    : '"JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "IBM Plex Mono", monospace';
+};
+
+watch([theme, uiFont], () => {
+  if (!term) return;
+  term.options.theme = termTheme();
+  term.options.fontFamily = terminalFont();
 });
 
 onMounted(() => {
   term = new Terminal({
-    fontFamily: '"JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "IBM Plex Mono", monospace',
+    fontFamily: terminalFont(),
     fontSize: 14,
     cursorBlink: true,
     scrollback: 5000,

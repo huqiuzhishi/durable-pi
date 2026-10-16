@@ -49,6 +49,7 @@ const chat = ref<HTMLElement>();
 const lineageNav = ref<HTMLElement>();
 const picker = ref(false);
 const filesMenu = ref(false);
+const filesMenuLeft = ref(0);
 // The hub reaches local devices directly and ssh/exe-dev devices over ssh; url devices have no shell access.
 const canTerminal = computed(() => !!sessionSummary.value?.cwd && device.value?.kind !== "url");
 // Terminal can sit above or left of chat. Each split size persists per browser.
@@ -171,6 +172,15 @@ watch(selected, () => {
   filesMenu.value = false;
 });
 
+function toggleFilesMenu(event: MouseEvent) {
+  const button = event.currentTarget as HTMLElement;
+  const parent = button.closest<HTMLElement>(".lineage-picker");
+  const width = Math.min(520, window.innerWidth - 32);
+  filesMenuLeft.value = Math.max(0, Math.min(button.offsetLeft, (parent?.clientWidth ?? width) - width));
+  filesMenu.value = !filesMenu.value;
+  picker.value = false;
+}
+
 function copyFilePath(path: string) {
   void navigator.clipboard.writeText(path);
   notify(`Copied ${path}`);
@@ -270,10 +280,7 @@ watch(
             aria-haspopup="dialog"
             :aria-expanded="filesMenu"
             :title="`${changedFiles.length} file(s) changed by this agent`"
-            @click="
-              filesMenu = !filesMenu;
-              picker = false;
-            "
+            @click="toggleFilesMenu"
           >
             <FileDiff :size="16" /><span v-if="changedFiles.length" class="changed-files-badge">{{
               changedFiles.length
@@ -332,6 +339,7 @@ watch(
           />
           <section
             class="conversation-picker changed-files-popover"
+            :style="{ left: `${filesMenuLeft}px` }"
             role="dialog"
             aria-label="Changed files"
           >

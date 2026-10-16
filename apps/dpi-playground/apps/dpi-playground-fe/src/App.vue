@@ -8,6 +8,7 @@ import {
   PanelLeft,
   PanelRight,
   Plus,
+  Type,
   X,
   Database,
   GitFork,
@@ -44,12 +45,17 @@ import {
   toggleInspector,
   THEMES,
   theme,
+  UI_FONTS,
+  UI_SCALES,
+  uiFont,
+  uiScale,
 } from "./client/store";
 
 const onlineCount = computed(
   () => network.devices.value.filter((d) => d.status === "online").length,
 );
 const creatingAgent = ref(false);
+const appearanceOpen = ref(false);
 
 async function newAgent() {
   const handle = sessionHandle.value;
@@ -75,6 +81,10 @@ function keydown(e: KeyboardEvent) {
     return panel === "tree" ? toggleTree() : toggleInspector();
   }
   if (e.key !== "Escape") return;
+  if (appearanceOpen.value) {
+    appearanceOpen.value = false;
+    return;
+  }
   if (ui.dialog) {
     ui.dialog = undefined;
     return;
@@ -136,9 +146,33 @@ onBeforeUnmount(() => {
           ><i :class="{ online: streamState === 'live' }" />{{
             streamState === "live" ? "Connected" : "Reconnecting"
           }}</span
-        ><select v-model="theme" class="theme-select" aria-label="Color theme" title="Color theme">
-          <option v-for="t in THEMES" :key="t.id" :value="t.id">{{ t.label }}</option></select
-        ><button
+        ><div class="appearance-menu">
+          <button
+            class="icon-button"
+            :class="{ active: appearanceOpen }"
+            aria-label="Appearance"
+            aria-haspopup="dialog"
+            :aria-expanded="appearanceOpen"
+            title="Theme, font and UI size"
+            @click="appearanceOpen = !appearanceOpen"
+          >
+            <Type :size="17" />
+          </button>
+          <template v-if="appearanceOpen">
+            <button class="appearance-dismiss" aria-label="Close appearance" @click="appearanceOpen = false" />
+            <section class="appearance-popover" role="dialog" aria-label="Appearance settings">
+              <label>Theme<select v-model="theme" aria-label="Color theme">
+                <option v-for="t in THEMES" :key="t.id" :value="t.id">{{ t.label }}</option>
+              </select></label>
+              <label>Font<select v-model="uiFont" aria-label="UI font">
+                <option v-for="f in UI_FONTS" :key="f.id" :value="f.id">{{ f.label }}</option>
+              </select></label>
+              <label>Size<select v-model.number="uiScale" aria-label="UI size">
+                <option v-for="s in UI_SCALES" :key="s" :value="s">{{ Math.round(s * 100) }}%</option>
+              </select></label>
+            </section>
+          </template>
+        </div><button
           class="icon-button"
           title="How this works"
           aria-label="How this works"

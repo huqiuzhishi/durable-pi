@@ -42,7 +42,34 @@ export type ThemeId = (typeof THEMES)[number]["id"];
 const isTheme = (v: unknown): v is ThemeId => THEMES.some((t) => t.id === v);
 const savedTheme = typeof localStorage !== "undefined" ? localStorage.getItem("dpi.theme") : null;
 export const theme = ref<ThemeId>(isTheme(savedTheme) ? savedTheme : "rose");
-if (typeof document !== "undefined") document.documentElement.dataset.theme = theme.value;
+export const UI_FONTS = [
+  { id: "system", label: "System", css: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+  { id: "dm-sans", label: "DM Sans", css: '"DM Sans", sans-serif' },
+  { id: "manrope", label: "Manrope", css: '"Manrope", sans-serif' },
+  { id: "ibm-plex-mono", label: "IBM Plex Mono", css: '"IBM Plex Mono", monospace', mono: true },
+  { id: "jetbrains", label: "JetBrains Mono Nerd", css: '"JetBrainsMono Nerd Font", monospace', mono: true },
+  { id: "jetbrains-nl", label: "JetBrains Mono NL Nerd", css: '"JetBrainsMonoNL Nerd Font", monospace', mono: true },
+  { id: "mononoki", label: "Mononoki Nerd", css: '"Mononoki Nerd Font", monospace', mono: true },
+  { id: "firacode", label: "FiraCode Nerd", css: '"FiraCode Nerd Font", monospace', mono: true },
+  { id: "hack", label: "Hack Nerd", css: '"Hack Nerd Font", monospace', mono: true },
+  { id: "dankmono", label: "DankMono Nerd", css: '"DankMono Nerd Font", monospace', mono: true },
+] as const;
+export const UI_SCALES = [0.8, 0.85, 0.9, 1, 1.1, 1.2] as const;
+export type UiFontId = (typeof UI_FONTS)[number]["id"];
+const savedFont = localStorage.getItem("dpi.ui-font") as UiFontId | null;
+const savedScale = Number(localStorage.getItem("dpi.ui-scale"));
+export const uiFont = ref<UiFontId>(UI_FONTS.some((f) => f.id === savedFont) ? savedFont! : "system");
+export const uiScale = ref(UI_SCALES.includes(savedScale as (typeof UI_SCALES)[number]) ? savedScale : 1);
+const applyAppearance = () => {
+  const root = document.documentElement;
+  root.dataset.theme = theme.value;
+  const font = UI_FONTS.find((f) => f.id === uiFont.value)!;
+  root.style.setProperty("--font-sans", font.css);
+  root.style.setProperty("--font-title", font.css);
+  root.style.setProperty("--ui-scale", String(uiScale.value));
+  root.style.setProperty("--ui-scale-inverse", String(1 / uiScale.value));
+};
+if (typeof document !== "undefined") applyAppearance();
 const uiLoaded = ref(false);
 
 export const deviceId = computed(() => selected.value?.deviceId);
@@ -132,11 +159,17 @@ watch(
 watch(treeWidth, (v) => uiLoaded.value && saveLater("tree.width", v));
 watch(layout, (v) => uiLoaded.value && saveLater("layout.panels", { ...v }));
 watch(theme, (v) => {
-  if (typeof document !== "undefined") document.documentElement.dataset.theme = v;
-  try {
-    localStorage.setItem("dpi.theme", v);
-  } catch {}
+  applyAppearance();
+  localStorage.setItem("dpi.theme", v);
   if (uiLoaded.value) void hub.uiSet("ui.theme", v).catch(() => {});
+});
+watch(uiFont, (v) => {
+  applyAppearance();
+  localStorage.setItem("dpi.ui-font", v);
+});
+watch(uiScale, (v) => {
+  applyAppearance();
+  localStorage.setItem("dpi.ui-scale", String(v));
 });
 
 export async function boot() {
@@ -273,10 +306,15 @@ export const ui = reactive({
   inspectorOverlay: false,
   tab: "session",
   composer: "",
-  /** The session's tmux terminal panel under the transcript. */
-  terminal: false,
+  /** The session's tmux terminal panel; visibility persists across refreshes. */
+  terminal: localStorage.getItem("dpi.terminal-open") === "true",
   dialog: undefined as Dialog | undefined,
 });
+
+watch(
+  () => ui.terminal,
+  (open) => localStorage.setItem("dpi.terminal-open", String(open)),
+);
 
 export type Dialog =
   | { kind: "new-session"; deviceId?: string }
@@ -490,19 +528,21 @@ export function openFileInNvim(filePath: string) {
     });
     const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal?${q}`);
     let sent = false;
-    const timer = setTimeout(() => ws.close(), 4000);
-    ws.onmessage = () => {
-      if (sent) return;
+    const helperTmux = `dpi-${helperSession.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+    const timer = setTimeout(() => ws.close(), 20_000);
+    ws.onmessage = (event) => {
+      // SSH banners arrive before remote tmux. Wait for tmux's title/status before writing a command.
+      if (sent || !String(event.data).includes(helperTmux)) return;
       sent = true;
       const target = shSingleQuote(targetSession);
       const dir = shSingleQuote(cwd);
+      const fileDir = shSingleQuote(filePath.includes("/") ? filePath.slice(0, filePath.lastIndexOf("/")) : cwd);
       const nvimCmd = shSingleQuote(`nvim -- ${shSingleQuote(filePath)}`);
-      ws.send(`tmux has-session -t ${target} 2>/dev/null || tmux new-session -d -s ${target} -c ${dir}; tmux new-window -t ${target} -c ${dir} ${nvimCmd}; tmux kill-session\r`);
-      setTimeout(() => {
-        clearTimeout(timer);
-        ws.close();
-        document.querySelector<HTMLElement>(".terminal-panel .xterm-helper-textarea")?.focus();
-      }, 450);
+      ws.send(`root=$(git -C ${fileDir} rev-parse --show-toplevel 2>/dev/null || printf %s ${dir}); tmux has-session -t ${target} 2>/dev/null || tmux new-session -d -s ${target} -c "$root"; tmux new-window -t ${target} -c "$root" ${nvimCmd}; tmux kill-session\r`);
+    };
+    ws.onclose = () => {
+      clearTimeout(timer);
+      document.querySelector<HTMLElement>(".terminal-panel .xterm-helper-textarea")?.focus();
     };
     ws.onerror = () => clearTimeout(timer);
   };
