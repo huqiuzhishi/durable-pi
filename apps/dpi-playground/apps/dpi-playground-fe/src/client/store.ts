@@ -2,7 +2,7 @@
 // plus the command helpers every component shares.
 import { computed, reactive, ref, shallowRef, watch } from "vue";
 import type { AgentDetail, ModelInfo, NetworkDevice, TaskNode } from "@sdk/api";
-import { sumUsage } from "@sdk/transcript";
+import { sumUsage, type TranscriptItem } from "@sdk/transcript";
 import { lineage } from "@sdk/models";
 import { HubStream } from "./stream";
 import { deviceClient, hub, message } from "./hub";
@@ -22,10 +22,21 @@ export const treeWidth = ref(300);
 /** Which side panels are expanded (persisted). Collapsed panels shrink to an icon rail. */
 export const layout = reactive({ tree: true, inspector: true });
 export const THEMES = [
+  { id: "cursor-dark", label: "Cursor Dark" },
   { id: "rose", label: "Rose" },
   { id: "catppuccin-mocha", label: "Catppuccin Mocha" },
-  { id: "gruvbox", label: "Gruvbox" },
-  { id: "light", label: "Light" },
+  { id: "gruvbox", label: "Gruvbox Dark" },
+  { id: "dracula", label: "Dracula" },
+  { id: "tokyo-night", label: "Tokyo Night" },
+  { id: "nord", label: "Nord" },
+  { id: "one-dark", label: "One Dark" },
+  { id: "solarized-dark", label: "Solarized Dark" },
+  { id: "github-dark", label: "GitHub Dark" },
+  { id: "light", label: "Warm Light" },
+  { id: "catppuccin-latte", label: "Catppuccin Latte" },
+  { id: "gruvbox-light", label: "Gruvbox Light" },
+  { id: "solarized-light", label: "Solarized Light" },
+  { id: "github-light", label: "GitHub Light" },
 ] as const;
 export type ThemeId = (typeof THEMES)[number]["id"];
 const isTheme = (v: unknown): v is ThemeId => THEMES.some((t) => t.id === v);
@@ -384,4 +395,118 @@ export function panelHotkey(e: KeyboardEvent): "tree" | "inspector" | undefined 
   if (!held || e.repeat || e.isComposing) return;
   if (e.code === "KeyN") return "tree";
   if (e.code === "KeyT") return "inspector";
+}
+
+// ------------------------------------------------------------------ changed files + open in nvim
+
+const FILE_WRITE_TOOLS = new Set(["write", "edit", "create_file", "replace_in_file", "multi_edit"]);
+
+export interface WrittenFileInfo {
+  path: string;
+  rel: string;
+  name: string;
+  tool: string;
+  callId: string;
+  entryId: number | "live";
+  count: number;
+}
+
+function resolveFilePath(raw: string, cwd?: string): { path: string; rel: string; name: string } {
+  const cleanCwd = cwd?.replace(/\/+$/, "");
+  const cleanRaw = raw.replace(/^\.\//, "");
+  const path =
+    raw.startsWith("/") || raw.startsWith("~") || !cleanCwd ? raw : `${cleanCwd}/${cleanRaw}`;
+  const rel =
+    cleanCwd && path.startsWith(`${cleanCwd}/`) ? path.slice(cleanCwd.length + 1) : cleanRaw;
+  const name = path.split("/").filter(Boolean).at(-1) ?? path;
+  return { path, rel, name };
+}
+
+/** Distinct files written or edited in a single assistant turn (successful tool calls only). */
+export function turnWrittenFiles(item: TranscriptItem, cwd = sessionSummary.value?.cwd): WrittenFileInfo[] {
+  if (item.kind !== "assistant") return [];
+  const byPath = new Map<string, WrittenFileInfo>();
+  for (const b of item.blocks) {
+    if (b.type !== "tool" || b.call.status !== "done" || !FILE_WRITE_TOOLS.has(b.call.name)) continue;
+    const args = b.call.args as { path?: unknown; file_path?: unknown } | undefined;
+    const raw = typeof args?.path === "string" ? args.path : typeof args?.file_path === "string" ? args.file_path : "";
+    if (!raw) continue;
+    const { path, rel, name } = resolveFilePath(raw, cwd);
+    const prev = byPath.get(path);
+    byPath.set(path, {
+      path,
+      rel,
+      name,
+      tool: b.call.name,
+      callId: b.call.callId,
+      entryId: item.id,
+      count: (prev?.count ?? 0) + 1,
+    });
+  }
+  return [...byPath.values()];
+}
+
+/** Distinct files written or edited across all turns of the currently selected agent. */
+export const changedFiles = computed<WrittenFileInfo[]>(() => {
+  const cwd = sessionSummary.value?.cwd;
+  const byPath = new Map<string, WrittenFileInfo>();
+  for (const item of agentState.value.items) {
+    for (const f of turnWrittenFiles(item, cwd)) {
+      const prev = byPath.get(f.path);
+      byPath.set(f.path, { ...f, count: (prev?.count ?? 0) + f.count });
+    }
+  }
+  return [...byPath.values()];
+});
+
+export function scrollToToolCall(callId: string) {
+  const el = document.querySelector<HTMLDetailsElement>(`.tool-call[data-call-id="${CSS.escape(callId)}"]`);
+  if (!el) return;
+  el.open = true;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+const shSingleQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+
+/**
+ * Open `filePath` with `nvim` in a new tmux window of the session's terminal without sending
+ * keystrokes into any active shell pane. Uses an ephemeral sidecar tmux session over `/api/terminal`.
+ */
+export function openFileInNvim(filePath: string) {
+  const t = selected.value;
+  const cwd = sessionSummary.value?.cwd;
+  if (!t || !cwd || device.value?.kind === "url") return;
+  const wasClosed = !ui.terminal;
+  ui.terminal = true;
+  const targetSession = `dpi-${t.sessionId.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+  const helperSession = `${t.sessionId}-nvim-${Date.now().toString(36)}`;
+  const start = () => {
+    const q = new URLSearchParams({
+      device: t.deviceId,
+      session: helperSession,
+      cwd,
+      cols: "80",
+      rows: "24",
+    });
+    const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal?${q}`);
+    let sent = false;
+    const timer = setTimeout(() => ws.close(), 4000);
+    ws.onmessage = () => {
+      if (sent) return;
+      sent = true;
+      const target = shSingleQuote(targetSession);
+      const dir = shSingleQuote(cwd);
+      const nvimCmd = shSingleQuote(`nvim -- ${shSingleQuote(filePath)}`);
+      ws.send(`tmux has-session -t ${target} 2>/dev/null || tmux new-session -d -s ${target} -c ${dir}; tmux new-window -t ${target} -c ${dir} ${nvimCmd}; tmux kill-session\r`);
+      setTimeout(() => {
+        clearTimeout(timer);
+        ws.close();
+        document.querySelector<HTMLElement>(".terminal-panel .xterm-helper-textarea")?.focus();
+      }, 450);
+    };
+    ws.onerror = () => clearTimeout(timer);
+  };
+  setTimeout(start, wasClosed ? 300 : 30);
+  const name = filePath.split("/").filter(Boolean).at(-1) ?? filePath;
+  notify(`Opening ${name} in nvim (new tmux window)`);
 }

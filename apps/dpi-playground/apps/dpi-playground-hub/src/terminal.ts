@@ -87,7 +87,7 @@ export function terminalUpgrade(
       // Text frames are keystrokes; a binary frame carries {"resize":[cols,rows]}.
       ws.on("message", (data, binary) => {
         if (!binary) return term.write(data.toString());
-        const [cols, rows] = (JSON.parse(data.toString()) as { resize: [number, number] }).resize;
+        const [cols, rows] = (JSON.parse(data.toString()) as { resize?: [number, number] }).resize ?? [0, 0];
         if (cols > 1 && rows > 1) term.resize(Math.min(cols, 500), Math.min(rows, 300));
       });
       // Closing the tab only detaches this tmux client; the tmux session keeps running.

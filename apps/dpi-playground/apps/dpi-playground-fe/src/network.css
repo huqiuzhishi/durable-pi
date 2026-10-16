@@ -675,6 +675,17 @@
 }
 
 /* ---------------------------------------------------------------- session terminal */
+.chat-body,
+.chat-column {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+.chat-body.terminal-left {
+  flex-direction: row;
+}
 .terminal-panel {
   flex: 0 0 50%;
   min-height: 120px;
@@ -682,14 +693,859 @@
   background: var(--surface);
   overflow: hidden;
 }
+.terminal-left > .terminal-panel {
+  min-width: 220px;
+  min-height: 0;
+}
 .terminal-resizer {
   flex: 0 0 6px;
   cursor: row-resize;
   background: var(--line);
+}
+.terminal-left > .terminal-resizer {
+  cursor: col-resize;
 }
 .terminal-resizer:hover {
   background: var(--accent-border);
 }
 .chat-header .icon-button.active {
   color: var(--accent);
+}
+
+/* ================================================================
+   Cursor IDE & pi-web UI Polish + Changed Files
+   ================================================================ */
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  --font-title: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrainsMono Nerd Font Mono", "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* ---------------------------------------------------------------- compact IDE topbar */
+.topbar {
+  min-height: 44px;
+  height: 44px;
+  padding: 0 14px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--line);
+}
+.brand,
+.top-actions {
+  gap: 8px;
+}
+.brandmark {
+  width: 28px;
+  height: 16px;
+  margin-left: 2px;
+}
+.brand strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.network-summary {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--secondary);
+}
+.connection {
+  font-size: 12px;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.theme-select {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--secondary);
+  transition: background 0.12s, color 0.12s;
+}
+.icon-button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.primary,
+.secondary {
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: 6px;
+  padding: 5px 10px;
+  gap: 5px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.primary.small,
+.secondary.small,
+.chat-header-actions .secondary {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.primary svg,
+.secondary svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------------------------------------------------------------- sidebar & inspector proportions */
+.net-workspace {
+  --tree-w: 260px;
+  --inspector-w: 340px;
+  --rail-w: 44px;
+}
+.panel-rail {
+  gap: 4px;
+  padding: 8px 0;
+}
+.rail-device,
+.rail-tab {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+.tree-head {
+  padding: 8px 10px 6px 12px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  font-weight: 600;
+  color: var(--secondary);
+}
+.tree-list {
+  padding: 2px 6px 10px;
+}
+.tree-row {
+  min-height: 28px;
+  padding: 2px 6px 2px calc(4px + var(--depth) * 14px);
+  border-radius: 5px;
+  font-size: 13px;
+  gap: 6px;
+  transition: background 0.1s;
+}
+.tree-row.device .name {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.tree-row.session .name {
+  font-size: 13px;
+  font-weight: 500;
+}
+.tree-row .badge {
+  font-size: 10.5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--surface);
+}
+.tree-row .meta,
+.tree-row .path {
+  font-size: 11.5px;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+}
+.tree-resizer {
+  width: 4px;
+  flex: 0 0 4px;
+  margin: 0 -2px;
+}
+.tree-resizer:hover {
+  background: var(--accent);
+}
+
+/* ---------------------------------------------------------------- compact inspector */
+.inspector > .inspector-tabs {
+  min-height: 40px;
+  height: 40px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--line);
+  gap: 2px;
+}
+.inspector > .inspector-tabs button {
+  flex-direction: row;
+  gap: 5px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 5px;
+}
+.inspector > .inspector-tabs button svg {
+  width: 14px;
+  height: 14px;
+}
+.inspector-tabs .count {
+  position: static;
+  font-size: 10.5px;
+  min-width: 15px;
+  height: 15px;
+  line-height: 15px;
+  padding: 0 4px;
+}
+.inspector-body {
+  padding: 14px 16px;
+  font-size: 13px;
+}
+.inspector-body.session-panel {
+  padding: 0 0 16px;
+}
+.session-panel .session-heading {
+  padding: 14px 16px;
+}
+.session-panel .model-section {
+  padding: 14px 16px;
+}
+.eyebrow,
+.section-label {
+  font-size: 11px;
+  letter-spacing: 0.9px;
+  font-weight: 600;
+}
+.session-heading h1 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.session-heading .path,
+.hint,
+.saved,
+.field-label {
+  font-size: 12px;
+}
+.metrics {
+  gap: 8px;
+}
+.metrics div {
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.metrics strong {
+  font-size: 14px;
+}
+.metrics small {
+  font-size: 11px;
+}
+.model-button {
+  min-height: 52px;
+  padding: 8px 10px;
+  border-radius: 7px;
+}
+.model-button img,
+.model-list img {
+  width: 30px;
+  height: 30px;
+  padding: 3px;
+  border-radius: 6px;
+}
+.model-button strong,
+.model-list strong {
+  font-size: 13px;
+}
+.model-button small,
+.model-list small {
+  font-size: 11.5px;
+}
+.thinking-row,
+.thinking-row select,
+.inspector textarea,
+.inspector input {
+  font-size: 12.5px;
+}
+.switch {
+  width: 38px;
+  height: 22px;
+  padding: 2px;
+}
+.switch > span {
+  width: 18px;
+  height: 18px;
+}
+.context-numbers {
+  font-size: 12.5px;
+}
+.context-numbers strong {
+  font-size: 16px;
+}
+.context-bar {
+  height: 8px;
+  margin: 26px 0 28px;
+  border-radius: 4px;
+}
+.context-marker {
+  top: -5px;
+  height: 18px;
+  width: 3px;
+}
+.context-marker-label,
+.context-details-toggle {
+  font-size: 11px;
+}
+.usage-breakdown,
+.usage-breakdown th,
+.usage-breakdown td {
+  font-size: 12px;
+}
+.tool-row summary,
+.ext-head strong,
+.job-def-head strong,
+.task-row {
+  font-size: 13px;
+}
+.tool-row p,
+.tool-row small,
+.tool-row pre,
+.ext-card > p,
+.ext-prompts li,
+.ext-prompts code,
+.ext-prompts pre,
+.job-def p,
+.job-chain li,
+.job-def-meta code,
+.job-def-last,
+.task-row small,
+.task-example p,
+.task-explanation p,
+.task-empty {
+  font-size: 12px;
+}
+.tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------- sleek chat header & breadcrumbs */
+.chat-header {
+  min-height: 44px;
+  padding: 0 16px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--line);
+}
+.lineage-picker {
+  padding: 4px 0;
+}
+.lineage-toolbar {
+  gap: 3px;
+}
+.crumbs {
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+}
+.crumb {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  max-width: 240px;
+}
+.crumb-kind {
+  font-size: 9.5px;
+  letter-spacing: 0.6px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  color: var(--secondary);
+}
+.crumb.current .crumb-kind {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.crumb-main {
+  font-size: 13px;
+  font-weight: 500;
+  gap: 5px;
+}
+.crumb-main svg {
+  width: 14px;
+  height: 14px;
+}
+.crumb-sep {
+  margin-bottom: 0;
+  width: 14px;
+  height: 14px;
+  opacity: 0.55;
+}
+.lineage-source {
+  margin: 2px 8px 0;
+  font-size: 11.5px;
+}
+
+/* ---------------------------------------------------------------- changed files button & popover */
+.changed-files-toggle {
+  position: relative;
+  width: auto;
+  min-width: 28px;
+  padding: 0 7px;
+  gap: 4px;
+}
+.changed-files-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+.changed-files-popover {
+  right: 0;
+  left: auto;
+  width: min(520px, calc(100vw - 32px));
+  padding: 6px;
+}
+.changed-files-popover .conversation-picker-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.changed-files-cwd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changed-files-empty {
+  padding: 16px 10px;
+  text-align: center;
+  color: var(--secondary);
+  font-size: 12.5px;
+}
+.changed-file-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  border-radius: 6px;
+}
+.changed-file-row:hover {
+  background: var(--surface-2);
+}
+.changed-file-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  text-align: left;
+  border-radius: 5px;
+}
+.changed-file-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.changed-file-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+.changed-file-name {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.changed-file-path {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.changed-file-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--secondary);
+}
+.changed-file-tool {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 10.5px;
+}
+.changed-file-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.changed-file-nvim,
+.turn-file-nvim {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+}
+.changed-file-nvim:hover,
+.turn-file-nvim:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+/* TurnWrittenFiles chips under each assistant turn (like pi-web) */
+.turn-written-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.turn-file-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.turn-file-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+}
+.turn-file-jump:hover {
+  background: var(--hover);
+}
+.turn-file-jump svg {
+  color: var(--accent);
+}
+.turn-file-chip .turn-file-nvim {
+  height: 24px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0 6px;
+}
+
+/* ---------------------------------------------------------------- Cursor / pi-web transcript & tool pills */
+.chat-scroll {
+  padding: 20px clamp(18px, 4vw, 56px) 14px;
+}
+.entry {
+  margin-bottom: 18px;
+}
+.message-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: var(--secondary);
+  margin-bottom: 6px;
+  gap: 6px;
+}
+.message-label > span:not(.mini-pi):not(.streaming) {
+  font-size: 11px;
+  color: var(--dim);
+}
+.streaming {
+  font-size: 11.5px;
+}
+.pi-user {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.user-message {
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.markdown {
+  font-size: 14px;
+  line-height: 1.65;
+}
+.markdown p {
+  margin: 0 0 10px;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown :is(h4, h5, h6) {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 16px 0 8px;
+}
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.markdown pre {
+  padding: 12px 14px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  margin: 10px 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.markdown pre code {
+  border: 0;
+  padding: 0;
+  background: none;
+  font-size: 12.5px;
+}
+.markdown td,
+.markdown th {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.fork-button {
+  font-size: 11.5px;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0.7;
+}
+.fork-button svg {
+  width: 13px;
+  height: 13px;
+}
+.entry:hover .fork-button {
+  opacity: 1;
+}
+
+/* Tool calls: compact single-line Cursor IDE pills */
+.tool-call,
+.tool-result,
+.live-tool {
+  margin: 6px 0;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  font-size: 12.5px;
+}
+.tool-call summary,
+.tool-result summary {
+  padding: 6px 10px;
+  gap: 7px;
+  min-height: 30px;
+  flex-wrap: nowrap;
+}
+.tool-call summary svg,
+.tool-result summary svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.tool-call.failed summary svg,
+.tool-result.failed summary svg {
+  color: var(--danger);
+}
+.tool-call summary strong,
+.tool-result summary strong {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.tool-call summary code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--secondary);
+  flex: 1;
+  min-width: 0;
+}
+.tool-status,
+.tool-result summary > span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--dim);
+  flex-shrink: 0;
+}
+.tool-section-label {
+  padding: 5px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.tool-call pre,
+.tool-result pre,
+.live-tool pre {
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--bg-inset);
+  border-top: 1px solid var(--line);
+}
+.thinking {
+  font-size: 12.5px;
+  margin: 6px 0 10px;
+}
+.thinking div {
+  font-size: 12.5px;
+  line-height: 1.6;
+  margin-top: 6px;
+}
+.event-line {
+  font-size: 12.5px;
+  padding: 4px 0;
+}
+
+/* ---------------------------------------------------------------- floating Cursor composer */
+.composer-region {
+  padding: 10px clamp(16px, 3vw, 40px) 10px;
+}
+.composer {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 18px var(--shadow);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.composer:focus-within {
+  border-color: var(--accent-border);
+}
+.composer textarea {
+  min-height: 54px;
+  max-height: 200px;
+  padding: 11px 14px 6px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.composer-toolbar {
+  padding: 5px 8px 8px 10px;
+  gap: 6px;
+}
+.queue-mode {
+  min-width: 116px;
+}
+.composer-left .queue-mode select {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 26px 0 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.queue-mode > svg {
+  width: 14px;
+  height: 14px;
+  right: 7px;
+}
+.interrupt {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
+  border-radius: 6px;
+  gap: 5px;
+}
+.interrupt .stop-sign {
+  width: 13px;
+  height: 13px;
+}
+.send {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+.send svg {
+  width: 15px;
+  height: 15px;
+}
+.composer-footnote {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--dim);
+}
+.slash-menu li {
+  padding: 5px 8px;
+  font-size: 12.5px;
+}
+.slash-menu code {
+  font-size: 12.5px;
+}
+.slash-args,
+.slash-desc {
+  font-size: 12px;
+}
+.conversation-picker-heading,
+.choice-lineage,
+.choice-source {
+  font-size: 12.5px;
+}
+.conversation-choice {
+  padding: 8px 10px;
 }

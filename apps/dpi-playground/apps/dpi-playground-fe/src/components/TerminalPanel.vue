@@ -4,6 +4,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { ClipboardAddon } from "@xterm/addon-clipboard";
 import "@xterm/xterm/css/xterm.css";
 import { theme } from "../client/store";
 
@@ -37,6 +38,13 @@ onMounted(() => {
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  // tmux emits OSC 52 with the default (empty) selector; xterm's browser provider accepts only `c`.
+  term.loadAddon(
+    new ClipboardAddon(undefined, {
+      readText: () => navigator.clipboard.readText(),
+      writeText: (_selection, text) => navigator.clipboard.writeText(text),
+    }),
+  );
   term.open(host.value!);
   fit.fit();
   const q = new URLSearchParams({

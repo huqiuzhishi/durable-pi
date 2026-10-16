@@ -1,13 +1,23 @@
 <script setup lang="ts">
-import { Activity, Braces, Check, GitFork, Info, Layers, Wrench } from "lucide-vue-next";
+import { computed } from "vue";
+import { Activity, Braces, Check, FileCode2, GitFork, Info, Layers, SquareTerminal, Wrench } from "lucide-vue-next";
 import type { TranscriptItem, ToolCallView } from "@sdk/transcript";
 import { markdown } from "../client/markdown";
-import { json } from "../client/store";
+import {
+  device,
+  json,
+  openFileInNvim,
+  scrollToToolCall,
+  sessionSummary,
+  turnWrittenFiles,
+} from "../client/store";
 import { runByCall, runById } from "../client/jobs";
 import JobCard from "./JobCard.vue";
 
-defineProps<{ item: TranscriptItem }>();
+const props = defineProps<{ item: TranscriptItem }>();
 const emit = defineEmits<{ fork: [entryId: number] }>();
+const canTerminal = computed(() => !!sessionSummary.value?.cwd && device.value?.kind !== "url");
+const writtenFiles = computed(() => turnWrittenFiles(props.item, sessionSummary.value?.cwd));
 const statusLabel = (call: ToolCallView) =>
   call.status === "error" ? "Error" : call.status === "done" ? "Done" : call.status;
 const entryClass = (item: TranscriptItem) =>
@@ -94,6 +104,28 @@ const entryClass = (item: TranscriptItem) =>
           :run="runByCall(b.call.callId)!"
         /></template
       >
+      <div v-if="writtenFiles.length" class="turn-written-files" aria-label="Files written in this turn">
+        <div v-for="f in writtenFiles" :key="f.path" class="turn-file-chip">
+          <button
+            type="button"
+            class="turn-file-jump"
+            :title="`${f.path} (${f.tool})`"
+            @click="scrollToToolCall(f.callId)"
+          >
+            <FileCode2 :size="13" /><span>{{ f.name }}</span>
+          </button>
+          <button
+            v-if="canTerminal"
+            type="button"
+            class="turn-file-nvim"
+            :title="`Open ${f.rel} with nvim in terminal`"
+            :aria-label="`Open ${f.name} in nvim`"
+            @click="openFileInNvim(f.path)"
+          >
+            <SquareTerminal :size="12" />nvim
+          </button>
+        </div>
+      </div>
       <div v-if="item.streaming && !item.blocks.length" class="typing"><i /><i /><i /></div>
       <div v-if="item.error" class="message-error">{{ item.error }}</div></template
     >

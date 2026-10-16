@@ -7,11 +7,16 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Copy,
   CornerDownRight,
+  FileCode2,
+  FileDiff,
   FolderOpen,
   GitFork,
   MessageSquare,
   Pencil,
+  PanelLeft,
+  PanelTop,
   SquareTerminal,
 } from "lucide-vue-next";
 import type { AgentSummary } from "@sdk/api";
@@ -25,9 +30,12 @@ import {
   agent,
   agentHandle,
   agentState,
+  changedFiles,
   device,
   notify,
+  openFileInNvim,
   preset,
+  scrollToToolCall,
   select,
   selected,
   sessionAgents,
@@ -40,19 +48,39 @@ import {
 const chat = ref<HTMLElement>();
 const lineageNav = ref<HTMLElement>();
 const picker = ref(false);
+const filesMenu = ref(false);
 // The hub reaches local devices directly and ssh/exe-dev devices over ssh; url devices have no shell access.
 const canTerminal = computed(() => !!sessionSummary.value?.cwd && device.value?.kind !== "url");
-// Terminal on top, transcript below; drag the divider. Height is a percent of the panel, kept per browser.
+// Terminal can sit above or left of chat. Each split size persists per browser.
 const panel = ref<HTMLElement>();
-const termHeight = ref(Number(localStorage.getItem("dpi.terminal-height")) || 50);
+const terminalLeft = ref(localStorage.getItem("dpi.terminal-position") === "left");
+const savedSize = () =>
+  Number(localStorage.getItem(terminalLeft.value ? "dpi.terminal-width" : "dpi.terminal-height")) || 50;
+const termSize = ref(savedSize());
+function toggleTerminalPosition() {
+  terminalLeft.value = !terminalLeft.value;
+  localStorage.setItem("dpi.terminal-position", terminalLeft.value ? "left" : "top");
+  termSize.value = savedSize();
+}
 function resizeTerminal(e: PointerEvent) {
   const box = panel.value!.getBoundingClientRect();
   const move = (m: PointerEvent) =>
-    (termHeight.value = Math.max(15, Math.min(85, ((m.clientY - box.top) / box.height) * 100)));
+    (termSize.value = Math.max(
+      15,
+      Math.min(
+        85,
+        terminalLeft.value
+          ? ((m.clientX - box.left) / box.width) * 100
+          : ((m.clientY - box.top) / box.height) * 100,
+      ),
+    ));
   const up = () => {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
-    localStorage.setItem("dpi.terminal-height", String(Math.round(termHeight.value)));
+    localStorage.setItem(
+      terminalLeft.value ? "dpi.terminal-width" : "dpi.terminal-height",
+      String(Math.round(termSize.value)),
+    );
   };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
@@ -140,7 +168,21 @@ function renameAgent() {
 
 watch(selected, () => {
   picker.value = false;
+  filesMenu.value = false;
 });
+
+function copyFilePath(path: string) {
+  void navigator.clipboard.writeText(path);
+  notify(`Copied ${path}`);
+}
+function jumpToFile(callId: string) {
+  filesMenu.value = false;
+  scrollToToolCall(callId);
+}
+function openChangedFileInNvim(path: string) {
+  filesMenu.value = false;
+  openFileInNvim(path);
+}
 
 // Follow the bottom of the transcript unless the reader scrolled up.
 let pinned = true;
@@ -222,6 +264,22 @@ watch(
             </template>
           </nav>
           <button
+            class="icon-button changed-files-toggle"
+            :class="{ active: filesMenu }"
+            aria-label="Changed files"
+            aria-haspopup="dialog"
+            :aria-expanded="filesMenu"
+            :title="`${changedFiles.length} file(s) changed by this agent`"
+            @click="
+              filesMenu = !filesMenu;
+              picker = false;
+            "
+          >
+            <FileDiff :size="16" /><span v-if="changedFiles.length" class="changed-files-badge">{{
+              changedFiles.length
+            }}</span>
+          </button>
+          <button
             v-if="canTerminal"
             class="icon-button"
             :class="{ active: ui.terminal }"
@@ -231,6 +289,16 @@ watch(
             @click="ui.terminal = !ui.terminal"
           >
             <SquareTerminal :size="18" />
+          </button>
+          <button
+            v-if="ui.terminal && canTerminal"
+            class="icon-button"
+            :aria-label="terminalLeft ? 'Move terminal above chat' : 'Move terminal left of chat'"
+            :title="terminalLeft ? 'Terminal above chat' : 'Terminal left of chat'"
+            @click="toggleTerminalPosition"
+          >
+            <PanelTop v-if="terminalLeft" :size="18" />
+            <PanelLeft v-else :size="18" />
           </button>
           <button
             class="icon-button"
@@ -256,6 +324,68 @@ watch(
         <div v-if="current && current.kind !== 'root'" class="lineage-source">
           {{ source(current) }}
         </div>
+        <template v-if="filesMenu">
+          <button
+            class="conversation-menu-dismiss"
+            aria-label="Close changed files"
+            @click="filesMenu = false"
+          />
+          <section
+            class="conversation-picker changed-files-popover"
+            role="dialog"
+            aria-label="Changed files"
+          >
+            <div class="conversation-picker-heading">
+              <span>Changed files ({{ changedFiles.length }})</span>
+              <span v-if="sessionSummary?.cwd" class="changed-files-cwd">{{
+                sessionSummary.cwd
+              }}</span>
+            </div>
+            <div v-if="!changedFiles.length" class="changed-files-empty">
+              No files written or edited by this agent yet.
+            </div>
+            <div v-for="f in changedFiles" :key="f.path" class="changed-file-row">
+              <button
+                type="button"
+                class="changed-file-main"
+                :title="`Jump to ${f.tool} (#${f.entryId}) — ${f.path}`"
+                @click="jumpToFile(f.callId)"
+              >
+                <FileCode2 :size="15" class="changed-file-icon" />
+                <div class="changed-file-text">
+                  <span class="changed-file-name">{{ f.name }}</span>
+                  <span class="changed-file-path">{{ f.rel }}</span>
+                </div>
+                <span class="changed-file-meta">
+                  <span class="changed-file-tool" :class="f.tool">{{ f.tool }}</span>
+                  <span v-if="f.count > 1" class="changed-file-count">×{{ f.count }}</span>
+                  <span class="changed-file-entry">#{{ f.entryId }}</span>
+                </span>
+              </button>
+              <div class="changed-file-actions">
+                <button
+                  type="button"
+                  class="icon-button"
+                  :title="`Copy ${f.path}`"
+                  :aria-label="`Copy path ${f.name}`"
+                  @click="copyFilePath(f.path)"
+                >
+                  <Copy :size="14" />
+                </button>
+                <button
+                  v-if="canTerminal"
+                  type="button"
+                  class="changed-file-nvim"
+                  :title="`Open ${f.path} with nvim in terminal`"
+                  :aria-label="`Open ${f.name} in nvim`"
+                  @click="openChangedFileInNvim(f.path)"
+                >
+                  <SquareTerminal :size="13" />nvim
+                </button>
+              </div>
+            </div>
+          </section>
+        </template>
         <template v-if="picker">
           <button
             class="conversation-menu-dismiss"
@@ -297,23 +427,25 @@ watch(
         </template>
       </div>
     </header>
-    <template v-if="ui.terminal && canTerminal && selected">
-      <TerminalPanel
-        :key="`${selected.deviceId}/${selected.sessionId}`"
-        :style="{ flexBasis: `${termHeight}%` }"
-        :device-id="selected.deviceId"
-        :session-id="selected.sessionId"
-        :cwd="sessionSummary!.cwd"
-      />
-      <div
-        class="terminal-resizer"
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize terminal"
-        @pointerdown.prevent="resizeTerminal"
-      />
-    </template>
-    <div ref="chat" class="chat-scroll" data-testid="chat">
+    <div class="chat-body" :class="{ 'terminal-left': terminalLeft }">
+      <template v-if="ui.terminal && canTerminal && selected">
+        <TerminalPanel
+          :key="`${selected.deviceId}/${selected.sessionId}`"
+          :style="{ flexBasis: `${termSize}%` }"
+          :device-id="selected.deviceId"
+          :session-id="selected.sessionId"
+          :cwd="sessionSummary!.cwd"
+        />
+        <div
+          class="terminal-resizer"
+          role="separator"
+          :aria-orientation="terminalLeft ? 'vertical' : 'horizontal'"
+          aria-label="Resize terminal"
+          @pointerdown.prevent="resizeTerminal"
+        />
+      </template>
+      <div class="chat-column">
+        <div ref="chat" class="chat-scroll" data-testid="chat">
       <div v-if="!agentState.ready" class="chat-empty">
         <Activity :size="30" />
         <h2 v-if="agent.status.value === 'fault'">This agent is unavailable.</h2>
@@ -362,7 +494,9 @@ watch(
         </p>
         <p v-for="(n, i) in agentState.notices" :key="i" class="message-error">{{ n }}</p>
       </template>
+        </div>
+        <Composer />
+      </div>
     </div>
-    <Composer />
   </section>
 </template>
