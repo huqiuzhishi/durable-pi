@@ -372,7 +372,7 @@ try {
   await composer().fill("/");
   await expect(
     page.getByRole("listbox", { name: "Slash commands" }).getByRole("option"),
-  ).toHaveCount(9);
+  ).toHaveCount(11);
   // A click proves the menu is on screen: a clipped option cannot receive the pointer.
   await composer().fill("/ta");
   await page.getByRole("option", { name: /\/tasks/ }).click();
@@ -381,6 +381,16 @@ try {
     "true",
   );
   await expect(composer()).toHaveValue("");
+  await composer().fill("/res");
+  await page.getByRole("option", { name: /\/resume/ }).click();
+  await expect(page.getByRole("dialog", { name: "Resume an agent" })).toBeVisible();
+  await page.getByLabel("Search sessions").fill("Renamed B");
+  await expect(page.locator(".resume-list button")).not.toHaveCount(0);
+  await page.getByRole("button", { name: "Close resume picker" }).click();
+  await composer().fill("/tree");
+  await composer().press("Enter");
+  await expect(page.getByRole("dialog", { name: "Agent tree" })).toBeVisible();
+  await page.getByRole("button", { name: "Close agent tree" }).click();
   await composer().fill("/compact");
   await composer().press("Enter");
   await expect(page.locator(".toast")).toContainText("Compaction requested");

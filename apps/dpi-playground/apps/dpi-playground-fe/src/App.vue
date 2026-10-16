@@ -21,6 +21,8 @@ import OfflinePanel from "./components/OfflinePanel.vue";
 import NewSessionDialog from "./components/NewSessionDialog.vue";
 import PromptDialog from "./components/PromptDialog.vue";
 import ModelPicker from "./components/ModelPicker.vue";
+import ResumePicker from "./components/ResumePicker.vue";
+import TreePicker from "./components/TreePicker.vue";
 import {
   attempt,
   boot,
@@ -251,6 +253,8 @@ onBeforeUnmount(() => {
       @close="ui.dialog = undefined"
     />
     <ModelPicker v-else-if="ui.dialog?.kind === 'models'" @close="ui.dialog = undefined" />
+    <ResumePicker v-else-if="ui.dialog?.kind === 'resume'" @close="ui.dialog = undefined" />
+    <TreePicker v-else-if="ui.dialog?.kind === 'tree'" @close="ui.dialog = undefined" />
     <div
       v-else-if="ui.dialog?.kind === 'path'"
       class="modal-backdrop"

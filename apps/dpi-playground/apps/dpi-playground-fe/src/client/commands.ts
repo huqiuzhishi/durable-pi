@@ -45,6 +45,16 @@ export const commands: SlashCommand[] = [
   },
   { name: "tasks", description: "Open the Tasks panel", run: () => showInspector("tasks") },
   {
+    name: "tree",
+    description: "Browse roots, forks and subagents",
+    run: () => (ui.dialog = { kind: "tree" }),
+  },
+  {
+    name: "resume",
+    description: "Find and resume a stored session",
+    run: () => (ui.dialog = { kind: "resume" }),
+  },
+  {
     name: "new",
     args: "[name]",
     description: "New agent in this workspace",

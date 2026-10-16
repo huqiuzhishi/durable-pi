@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { ArrowUp, ChevronDown, Clock3, Octagon, X } from "lucide-vue-next";
 import type { WhenBusy } from "@sdk/api";
 import { newId } from "../client/ids";
@@ -19,6 +19,11 @@ import {
 
 const mode = ref<WhenBusy>("followUp");
 const pending = ref(false);
+const historyIndex = ref(-1);
+let historyDraft = "";
+const promptHistory = computed(() =>
+  agentState.value.items.flatMap((item) => (item.kind === "user" && item.text.trim() ? [item.text] : [])),
+);
 
 // Typing "/" lists the slash commands, then the device's Pi skills; arrows pick, Tab or Enter completes.
 // `/skill:<name> [request]` is sent as text and the device inlines the skill.
@@ -58,8 +63,26 @@ async function pick(command: MenuItem, enter = false) {
     await send();
   }
 }
+function browseHistory(e: KeyboardEvent) {
+  if (e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || !promptHistory.value.length) return false;
+  const textarea = e.currentTarget as HTMLTextAreaElement;
+  const before = textarea.value.slice(0, textarea.selectionStart);
+  if (e.key === "ArrowUp" && !before.includes("\n")) {
+    if (historyIndex.value < 0) historyDraft = ui.composer;
+    historyIndex.value = Math.min(historyIndex.value + 1, promptHistory.value.length - 1);
+  } else if (e.key === "ArrowDown" && historyIndex.value >= 0) {
+    historyIndex.value--;
+  } else return false;
+  ui.composer = historyIndex.value < 0 ? historyDraft : promptHistory.value.at(-1 - historyIndex.value)!;
+  void nextTick(() => textarea.setSelectionRange(ui.composer.length, ui.composer.length));
+  e.preventDefault();
+  return true;
+}
+
 function keydown(e: KeyboardEvent) {
+  if (historyIndex.value >= 0 && browseHistory(e)) return;
   if (!matches.value.length) {
+    if (browseHistory(e)) return;
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       void send();
@@ -160,6 +183,7 @@ function withdraw(id: number) {
         rows="2"
         placeholder="Give your agent something to do, or type / for commands…"
         aria-label="Message your agent"
+        @input="historyIndex = -1"
         @keydown="keydown"
       />
       <div class="composer-toolbar">

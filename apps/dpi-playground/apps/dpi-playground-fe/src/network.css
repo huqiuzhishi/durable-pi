@@ -1157,6 +1157,98 @@ body {
 }
 
 /* ---------------------------------------------------------------- changed files button & popover */
+.resume-modal {
+  width: min(680px, calc(100vw - 32px));
+}
+.tree-modal {
+  width: min(560px, calc(100vw - 32px));
+}
+.agent-tree-list {
+  display: grid;
+  gap: 3px;
+  max-height: min(65vh, 620px);
+  margin-top: 10px;
+  overflow-y: auto;
+}
+.agent-tree-list button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin-left: calc(var(--depth) * 22px);
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  text-align: left;
+}
+.agent-tree-list button:hover,
+.agent-tree-list button.selected {
+  background: var(--surface-3);
+}
+.agent-tree-list button > div {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.agent-tree-list strong {
+  font-size: 13px;
+}
+.agent-tree-list small {
+  color: var(--secondary);
+  font-size: 11.5px;
+}
+.agent-tree-list button > svg:first-child {
+  color: var(--accent);
+}
+.resume-list {
+  display: grid;
+  gap: 3px;
+  max-height: min(60vh, 560px);
+  margin-top: 12px;
+  overflow-y: auto;
+}
+.resume-list button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  text-align: left;
+}
+.resume-list button:hover,
+.resume-list button.selected {
+  background: var(--surface-3);
+}
+.resume-list button > div {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.resume-list strong,
+.resume-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.resume-list strong {
+  font-size: 13px;
+}
+.resume-list strong span,
+.resume-list small {
+  color: var(--secondary);
+  font-weight: 400;
+}
+.resume-list small {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.resume-empty {
+  padding: 18px;
+  text-align: center;
+}
+
 .changed-files-toggle {
   position: relative;
   width: auto;

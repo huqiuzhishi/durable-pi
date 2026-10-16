@@ -319,6 +319,8 @@ watch(
 export type Dialog =
   | { kind: "new-session"; deviceId?: string }
   | { kind: "models" }
+  | { kind: "resume" }
+  | { kind: "tree" }
   | { kind: "help" }
   | { kind: "path"; path: string }
   | { kind: "compaction" }
