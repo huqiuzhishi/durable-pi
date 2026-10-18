@@ -46,11 +46,22 @@ process.on("SIGINT", () => stop());
 process.on("SIGTERM", () => stop());
 
 /** Its own process group, so stop() also ends npm's and tsx's children. */
-function start(name: string, cmd: string, args: string[], cwd?: string, env: NodeJS.ProcessEnv = process.env) {
-  const proc = spawn(cmd, args, { cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+function start(
+  name: string,
+  cmd: string,
+  args: string[],
+  options: { cwd?: string; env?: NodeJS.ProcessEnv; fatal?: boolean } = {},
+) {
+  const proc = spawn(cmd, args, {
+    cwd: options.cwd,
+    env: options.env ?? process.env,
+    detached: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   for (const stream of [proc.stdout!, proc.stderr!]) createInterface({ input: stream }).on("line", (l) => log(`[${name}] ${l}`));
   proc.on("exit", (code) => {
     if (stopping) return;
+    if (options.fatal === false) return void log(`${name} exited (code ${code}); skipped`);
     log(`${name} exited (code ${code}); stopping the rest. Run just connect again.`);
     stop(1);
   });
@@ -88,8 +99,18 @@ async function bringUp(device: NetDevice) {
     const port = Number(url.port);
     if (await listening(port)) log(`tunnel ${device.id}: reusing 127.0.0.1:${port}`);
     else {
-      start(`tunnel ${device.id}`, "ssh", [...SSH_OPTS, "-N", "-o", "ExitOnForwardFailure=yes", "-L", `${port}:127.0.0.1:${device.port}`, device.ssh]);
-      await waitPort(port, `the ssh tunnel to ${device.ssh}`);
+      const tunnel = start(
+        `tunnel ${device.id}`,
+        "ssh",
+        [...SSH_OPTS, "-N", "-o", "ExitOnForwardFailure=yes", "-L", `${port}:127.0.0.1:${device.port}`, device.ssh],
+        { fatal: false },
+      );
+      await Promise.race([
+        waitPort(port, `the ssh tunnel to ${device.ssh}`),
+        new Promise<never>((_, reject) =>
+          tunnel.once("exit", (code) => reject(Error(`ssh tunnel exited with code ${code}`))),
+        ),
+      ]);
       log(`tunnel ${device.id}: 127.0.0.1:${port} → ${device.ssh}:${device.port}`);
     }
   }
@@ -106,7 +127,7 @@ async function startLocal(local: NetDevice) {
   const port = Number(new URL(local.url).port);
   if (await listening(port)) return log(`backend ${local.id}: reusing ${local.url}`);
   if (!registry.get(local.id)?.token) await drivers.local.up!(local, ctx);
-  start("backend", "npm", ["start", "--silent"], join(config.root, "apps/dpi-backend"));
+  start("backend", "npm", ["start", "--silent"], { cwd: join(config.root, "apps/dpi-backend") });
   await waitOnline(local, ctx);
 }
 
@@ -117,7 +138,10 @@ async function startHub() {
     log("hub: building the web UI");
     await run("npm", ["run", "build", "--silent"], { cwd: app, echo: true });
   }
-  start("hub", "npm", ["start", "--silent"], app, { ...process.env, DPI_HUB_PORT: String(hubPort) });
+  start("hub", "npm", ["start", "--silent"], {
+    cwd: app,
+    env: { ...process.env, DPI_HUB_PORT: String(hubPort) },
+  });
   await waitPort(hubPort, "the hub");
 }
 
