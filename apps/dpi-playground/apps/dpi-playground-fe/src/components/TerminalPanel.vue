@@ -6,12 +6,13 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import "@xterm/xterm/css/xterm.css";
-import { theme, UI_FONTS, uiFont } from "../client/store";
+import { theme, UI_FONTS, uiFont, uiScale } from "../client/store";
 
 const props = defineProps<{ deviceId: string; sessionId: string; cwd: string }>();
 const host = ref<HTMLElement>();
 let ws: WebSocket | undefined;
 let term: Terminal | undefined;
+let fit: FitAddon | undefined;
 let observer: ResizeObserver | undefined;
 
 function termTheme() {
@@ -31,21 +32,23 @@ const terminalFont = () => {
     : '"JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "IBM Plex Mono", monospace';
 };
 
-watch([theme, uiFont], () => {
+watch([theme, uiFont, uiScale], () => {
   if (!term) return;
   term.options.theme = termTheme();
   term.options.fontFamily = terminalFont();
+  term.options.fontSize = 12 * uiScale.value;
+  fit?.fit();
 });
 
 onMounted(() => {
   term = new Terminal({
     fontFamily: terminalFont(),
-    fontSize: 14,
+    fontSize: 12 * uiScale.value,
     cursorBlink: true,
     scrollback: 5000,
     theme: termTheme(),
   });
-  const fit = new FitAddon();
+  fit = new FitAddon();
   term.loadAddon(fit);
   // tmux emits OSC 52 with the default (empty) selector; xterm's browser provider accepts only `c`.
   term.loadAddon(
@@ -72,7 +75,7 @@ onMounted(() => {
     if (ws?.readyState === WebSocket.OPEN)
       ws.send(new TextEncoder().encode(JSON.stringify({ resize: [cols, rows] })));
   });
-  observer = new ResizeObserver(() => fit.fit());
+  observer = new ResizeObserver(() => fit?.fit());
   observer.observe(host.value!);
   term.focus();
 });
