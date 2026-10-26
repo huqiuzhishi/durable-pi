@@ -1,8 +1,8 @@
 // `just connect [device...] [--deploy]`: from this machine to the web UI in one command. With no ids and several
 // remote devices it opens fzf (Tab selects more than one). For each device it opens an ssh tunnel when the url is a
 // local port, syncs the device and restarts it only when something changed (--deploy runs the full `up` instead).
-// Then it starts this machine's backend and the hub, and opens the browser. Ctrl-C stops what it started; the
-// devices' own services keep running.
+// Tunnels reconnect after network loss or laptop sleep. Then it starts this machine's backend and the hub, and opens
+// the browser. Ctrl-C stops what it started; the devices' own services keep running.
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { connect as tcp } from "node:net";
@@ -101,8 +101,19 @@ async function bringUp(device: NetDevice) {
     else {
       const tunnel = start(
         `tunnel ${device.id}`,
-        "ssh",
-        [...SSH_OPTS, "-N", "-o", "ExitOnForwardFailure=yes", "-L", `${port}:127.0.0.1:${device.port}`, device.ssh],
+        "sh",
+        [
+          "-c",
+          'while true; do ssh "$@"; status=$?; echo "ssh exited (code $status); retrying in 2s" >&2; sleep 2; done',
+          "dpi-tunnel",
+          ...SSH_OPTS,
+          "-N",
+          "-o",
+          "ExitOnForwardFailure=yes",
+          "-L",
+          `${port}:127.0.0.1:${device.port}`,
+          device.ssh,
+        ],
         { fatal: false },
       );
       await Promise.race([

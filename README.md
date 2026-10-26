@@ -232,8 +232,8 @@ just net logs <id>       # tail the service log
 just net restart <id>    # restart the service
 just net rotate <id>     # new token on the device, then re-register
 just net destroy <id>    # exe-dev only; asks first; refuses VMs not in the YAML
-just connect [id...]     # one terminal: ssh tunnel when the url is a local port, sync and restart only on changes,
-                         # this machine's backend, the hub, the browser; Ctrl-C stops what it started.
+just connect [id...]     # one terminal: reconnecting ssh tunnel when the url is a local port, sync and restart only on changes,
+                         # this machine's backend, the hub, the browser; laptop sleep recovers, Ctrl-C stops it.
                          # No ids and several remote devices: fzf picks (Tab selects more than one)
 just connect <id...> --deploy   # same, with the full `up` (npm ci, env, service) first
 ```
