@@ -1,6 +1,97 @@
 /* Color themes for the Durable Pi hub. Each theme sets the same semantic token palette;
    components and stylesheets reference only these variables. */
 
+:root,
+:root[data-theme="ultimate-light"] {
+  color-scheme: light;
+  --bg-inset: #f3f3f5;
+  --bg: #f9fafb;
+  --bg-panel: #f5f5f6;
+  --surface: #ffffff;
+  --surface-2: #eeeeef;
+  --surface-3: #e5e5e7;
+  --hover: #18181b0a;
+  --backdrop: #18181b42;
+  --line: #e2e2e4;
+  --border: #d8d8dc;
+  --border-strong: #b8b8bf;
+  --text: #343438;
+  --secondary: #74747c;
+  --muted: var(--secondary);
+  --faint: var(--secondary);
+  --dim: #96969e;
+  --accent: #7c4db0;
+  --accent-soft: #7c4db012;
+  --accent-border: #bca4d7;
+  --accent-ink: #ffffff;
+  --primary-bg: #77777e;
+  --primary-hover: #66666d;
+  --primary-border: #77777e;
+  --primary-ink: #ffffff;
+  --ok: #27845a;
+  --ok-soft: #27845a14;
+  --ok-border: #82b9a0;
+  --warn: #a36a18;
+  --warn-soft: #a36a1814;
+  --warn-border: #d0ad76;
+  --danger: #c94b53;
+  --danger-soft: #c94b5314;
+  --danger-border: #dca0a4;
+  --shadow: #18181b18;
+  --tk-fn: #785c12;
+  --tk-prop: #176b73;
+  --tk-type: #395fa7;
+  --tk-str: #37703e;
+  --tk-num: #7444a0;
+  --tk-comment: #898991;
+  --tk-punct: #5f5f66;
+}
+
+:root[data-theme="ultimate-dark"] {
+  color-scheme: dark;
+  --bg-inset: #0d0d0e;
+  --bg: #111112;
+  --bg-panel: #101011;
+  --surface: #19191b;
+  --surface-2: #202023;
+  --surface-3: #29292d;
+  --hover: #ffffff0a;
+  --backdrop: #0000009e;
+  --line: #262629;
+  --border: #303034;
+  --border-strong: #48484e;
+  --text: #dddddf;
+  --secondary: #9d9da4;
+  --muted: var(--secondary);
+  --faint: var(--secondary);
+  --dim: #74747c;
+  --accent: #c2a2e8;
+  --accent-soft: #c2a2e812;
+  --accent-border: #745b91;
+  --accent-ink: #1b1423;
+  --primary-bg: #74747b;
+  --primary-hover: #85858d;
+  --primary-border: #85858d;
+  --primary-ink: #ffffff;
+  --ok: #75d5a5;
+  --ok-soft: #75d5a514;
+  --ok-border: #3f7058;
+  --warn: #e7c274;
+  --warn-soft: #e7c27414;
+  --warn-border: #76643d;
+  --danger: #e87c82;
+  --danger-soft: #e87c8214;
+  --danger-border: #80484c;
+  --shadow: #00000070;
+  --tk-fn: #e7c274;
+  --tk-prop: #83c9d0;
+  --tk-type: #8fabec;
+  --tk-str: #91cf96;
+  --tk-num: #c8a0e8;
+  --tk-comment: #777780;
+  --tk-punct: #b8b8bd;
+}
+
 :root[data-theme="cursor-dark"] {
   color-scheme: dark;
   --bg-inset: #0e0e0e;

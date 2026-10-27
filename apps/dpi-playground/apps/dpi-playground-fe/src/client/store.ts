@@ -22,6 +22,8 @@ export const treeWidth = ref(300);
 /** Which side panels are expanded (persisted). Collapsed panels shrink to an icon rail. */
 export const layout = reactive({ tree: true, inspector: true });
 export const THEMES = [
+  { id: "ultimate-light", label: "Ultimate Light" },
+  { id: "ultimate-dark", label: "Ultimate Dark" },
   { id: "cursor-dark", label: "Cursor Dark" },
   { id: "rose", label: "Rose" },
   { id: "catppuccin-mocha", label: "Catppuccin Mocha" },
@@ -41,8 +43,9 @@ export const THEMES = [
 export type ThemeId = (typeof THEMES)[number]["id"];
 const isTheme = (v: unknown): v is ThemeId => THEMES.some((t) => t.id === v);
 const savedTheme = typeof localStorage !== "undefined" ? localStorage.getItem("dpi.theme") : null;
-export const theme = ref<ThemeId>(isTheme(savedTheme) ? savedTheme : "rose");
+export const theme = ref<ThemeId>(isTheme(savedTheme) ? savedTheme : "ultimate-light");
 export const UI_FONTS = [
+  { id: "inter", label: "Inter", css: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
   { id: "system", label: "System", css: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
   { id: "dm-sans", label: "DM Sans", css: '"DM Sans", sans-serif' },
   { id: "manrope", label: "Manrope", css: '"Manrope", sans-serif' },
@@ -58,7 +61,7 @@ export const UI_SCALES = [0.8, 0.85, 0.9, 1, 1.1, 1.2] as const;
 export type UiFontId = (typeof UI_FONTS)[number]["id"];
 const savedFont = localStorage.getItem("dpi.ui-font") as UiFontId | null;
 const savedScale = Number(localStorage.getItem("dpi.ui-scale"));
-export const uiFont = ref<UiFontId>(UI_FONTS.some((f) => f.id === savedFont) ? savedFont! : "system");
+export const uiFont = ref<UiFontId>(UI_FONTS.some((f) => f.id === savedFont) ? savedFont! : "inter");
 export const uiScale = ref(UI_SCALES.includes(savedScale as (typeof UI_SCALES)[number]) ? savedScale : 1);
 const applyAppearance = () => {
   const root = document.documentElement;
