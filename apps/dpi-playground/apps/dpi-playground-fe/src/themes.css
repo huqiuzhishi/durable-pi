@@ -742,19 +742,6 @@
   --tk-punct: #59636e;
 }
 
-:root[data-theme="light"] .brandmark,
-:root[data-theme="light"] .welcome-symbol,
-:root[data-theme="catppuccin-latte"] .brandmark,
-:root[data-theme="catppuccin-latte"] .welcome-symbol,
-:root[data-theme="gruvbox-light"] .brandmark,
-:root[data-theme="gruvbox-light"] .welcome-symbol,
-:root[data-theme="solarized-light"] .brandmark,
-:root[data-theme="solarized-light"] .welcome-symbol,
-:root[data-theme="github-light"] .brandmark,
-:root[data-theme="github-light"] .welcome-symbol {
-  filter: invert(0.86);
-}
-
 .theme-select {
   padding: 6px 10px;
   font-size: 14px;
