@@ -67,28 +67,37 @@ export class StreamMux {
     });
     res.flushHeaders();
     let closed = false;
+    let ping: ReturnType<typeof setInterval> | undefined;
+    let off = () => {};
     const stream: BrowserStream = {
       upstreams: new Map(),
-      send: (frame) => {
-        if (closed) return;
-        if (res.writableLength > 4_000_000) return void res.end();
-        res.write(`data: ${JSON.stringify(frame)}\n\n`);
-      },
+      send: (frame) => write(`data: ${JSON.stringify(frame)}\n\n`),
     };
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      if (ping) clearInterval(ping);
+      off();
+      for (const ctl of stream.upstreams.values()) ctl.abort();
+      this.streams.delete(streamId);
+    };
+    const write = (data: string) => {
+      if (closed || res.writableEnded || res.destroyed) return;
+      if (res.writableLength > 4_000_000) {
+        close();
+        return void res.end();
+      }
+      res.write(data);
+    };
+    res.on("close", close);
+    res.on("error", close);
     this.streams.set(streamId, stream);
     stream.send({ sub: "hello", frame: { type: "stream", streamId } });
     const pushNetwork = () =>
       stream.send({ sub: "network", frame: { type: "network", devices: this.monitor.network() } });
     pushNetwork();
-    const off = this.monitor.onChange(pushNetwork);
-    const ping = setInterval(() => !closed && res.write(": ping\n\n"), 15_000);
-    res.on("close", () => {
-      closed = true;
-      clearInterval(ping);
-      off();
-      for (const ctl of stream.upstreams.values()) ctl.abort();
-      this.streams.delete(streamId);
-    });
+    off = this.monitor.onChange(pushNetwork);
+    ping = setInterval(() => write(": ping\n\n"), 15_000);
   }
 
   /** Replace a tab's subscription set: open new upstreams, close dropped ones. */
