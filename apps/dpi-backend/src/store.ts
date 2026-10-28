@@ -57,6 +57,7 @@ import {
   type SubmissionId,
   type ModelRef,
   type ToolRegistration,
+  type Extension,
 } from "@earendil-works/pi-durable";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
@@ -95,6 +96,8 @@ export interface StoreOptions {
   startDirs: string[];
   name: string;
   provider: "openrouter" | "faux" | "pi";
+  /** Installed in every session but selected by no agent unless it asks for them. */
+  extensions?: Extension[];
 }
 
 /** Agent documents a client may read or stream, by kind. */
@@ -130,7 +133,15 @@ export function lockFile(path: string) {
   };
 }
 
-type Opened = { harness: Harness; unlock: () => void; unsubscribe: () => void; jobs: Jobs; addons: Addons };
+type Opened = {
+  harness: Harness;
+  unlock: () => void;
+  unsubscribe: () => void;
+  jobs: Jobs;
+  addons: Addons;
+  /** The device's tool policy, which every agent's selection must keep. */
+  policy?: Extension;
+};
 type Resolved = { row: SessionRow; h: Harness; c: Conversation };
 
 const encodeCursor = (cursor: unknown) =>
@@ -574,6 +585,7 @@ export class Store {
           ],
         });
       if (policy) registry.install(policy);
+      for (const extension of this.options.extensions ?? []) registry.install(extension);
       const harness: Harness = await Harness.open(
         await openNodeSqliteStorage(row.dbPath),
         {
@@ -616,7 +628,7 @@ export class Store {
       row.model = rootModel.modelId;
       this.catalog.prepare("UPDATE sessions SET provider=?,model=? WHERE id=?").run(row.provider, row.model, row.id);
       const unsubscribe = harness.subscribeCommits(() => this.notify());
-      this.opened.set(row.id, { harness, unlock, unsubscribe, jobs, addons });
+      this.opened.set(row.id, { harness, unlock, unsubscribe, jobs, addons, ...(policy ? { policy } : {}) });
       this.errors.delete(row.id);
       if (create) harness.resume();
       return harness;

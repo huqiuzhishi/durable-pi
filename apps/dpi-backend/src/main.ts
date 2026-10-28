@@ -7,17 +7,31 @@ import { Store } from "./store.js";
 import { bearerAuth } from "./auth.js";
 import { errorMiddleware } from "./errors.js";
 import { v1 } from "./routes.js";
+import { gatewaySlack, slackExtension, SlackWatcher, type SlackMe } from "./slack.js";
 
 delete process.env.TMUX;
 delete process.env.TMUX_PANE;
 
 const config = loadConfig();
+// DPI_SLACK=1 turns on the personal Slack agent: drafts replies to your DMs and mentions, never sends.
+const slack = process.env.DPI_SLACK === "1" ? gatewaySlack() : undefined;
+const me: SlackMe = { id: "", name: "" };
+const slackExt = slack && slackExtension(slack, me);
 const store = await Store.open({
   dataDir: config.dataDir,
   startDirs: config.startDirs,
   name: config.name,
   provider: config.provider,
+  ...(slackExt ? { extensions: [slackExt] } : {}),
 });
+const watcher =
+  slack &&
+  slackExt &&
+  new SlackWatcher(store, slack, slackExt, me, {
+    pollMs: Number(process.env.DPI_SLACK_POLL_SECONDS ?? 60) * 1000,
+    ignore: new Set((process.env.DPI_SLACK_IGNORE ?? "").split(",").map((s) => s.trim()).filter(Boolean)),
+  });
+watcher?.start();
 
 const app = express();
 app.disable("x-powered-by");
@@ -41,6 +55,7 @@ let closing = false;
 const shutdown = async () => {
   if (closing) return;
   closing = true;
+  watcher?.stop();
   server.close();
   server.closeAllConnections();
   await store.close();
