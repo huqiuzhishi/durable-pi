@@ -2,7 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
 import { Store } from "../src/store.js";
-import { parseSearch, slackExtension, SlackThread, SlackWatcher, type SlackApi, type SlackMe } from "../src/slack.js";
+import {
+  isHighUrgencyAlert,
+  oncallExtension,
+  parseChannel,
+  parseSearch,
+  slackExtension,
+  SlackThread,
+  SlackWatcher,
+  type SlackApi,
+  type SlackMe,
+} from "../src/slack.js";
 import { tempStore, until } from "./helpers.js";
 
 const result = (r: {
@@ -117,4 +127,95 @@ test("slack: watcher gives each thread one agent, delivers once, drafts without 
     await store.close();
     await t.cleanup();
   }
+});
+
+const pd = (ts: string, urgency: string, alert: string) =>
+  `=== Message from PagerDuty <botuser-T1-A1@slack-bots.com> (U2U6DJY15) at 2026-10-27 17:16:55 PDT === \nMessage TS: ${ts}\n:large_green_circle: *<https://roblox.pagerduty.com/incidents/Q1|Environment: production | Alert: ${alert} | Service: >*\n:tornado: *Urgency:* ${urgency}\nThread: 8 replies (latest: 2026-10-27 17:25:22 PDT)\n\n`;
+const human = (ts: string, name: string, id: string, text: string) =>
+  `=== Message from ${name} <x@roblox.com> (${id}) at 2026-10-27 13:08:23 PDT === \nMessage TS: ${ts}\n${text}\nReactions: +1 (1)\n\n`;
+const channelRead = (...blocks: string[]) =>
+  JSON.stringify({ messages: `Channel: #ts-oncall (C_ON)\n\n${blocks.join("")}` });
+
+test("slack: parse a channel read and spot high-urgency PagerDuty alerts", () => {
+  const [high, low, person, deploy] = parseChannel(
+    channelRead(
+      pd("10.1", "High", "Backlog_High"),
+      pd("11.1", "Low", "Latency_High"),
+      human("12.1", "Karun Prasad", "U07", "Deploying video-automod today"),
+      "=== Message from Modern Deployment System (B054) at 2026-10-27 13:00:00 PDT === \nMessage TS: 13.1\nDeployed\n\n",
+    ),
+    "C_ON",
+  );
+  assert.equal(high.channelName, "#ts-oncall");
+  assert.deepEqual([high, low, person, deploy].map(isHighUrgencyAlert), [true, false, false, false]);
+  assert.deepEqual([high.bot, person.bot, deploy.bot], [true, false, true]);
+  assert.equal(person.userName, "Karun Prasad");
+  assert.equal(person.text, "Deploying video-automod today");
+});
+
+test("slack: on call, the agent drafts for humans and high-urgency alerts in the on-call channel only", async () => {
+  const t = await tempStore();
+  const now = Date.now() / 1000;
+  const ts = (s: number) => (now + s).toFixed(6);
+  let channel: string[] = [];
+  const slack: SlackApi = {
+    async call(tool) {
+      if (tool === "slack_read_user_profile") return JSON.stringify({ result: "User ID: UME\nReal Name: Me Myself\n" });
+      if (tool === "slack_read_channel") return channelRead(...channel);
+      if (tool === "slack_search_public_and_private") return JSON.stringify({ results: "## Messages (0 results)" });
+      throw Error(`unexpected ${tool}`);
+    },
+  };
+  const gatewayCalls: string[] = [];
+  const gateway = () => ({
+    call: async (tool: string) => (gatewayCalls.push(tool), "rows"),
+    listTools: async () => [{ name: "search_logs", description: "Search logs" }, { name: "update_issue" }],
+  });
+  const me: SlackMe = { id: "", name: "" };
+  const extension = slackExtension(slack, me);
+  const oncallExt = oncallExtension(gateway, me, "C_ON");
+  const store = await Store.open({ ...t.options, extensions: [extension, oncallExt] });
+  const watcher = (active: boolean) =>
+    new SlackWatcher(store, slack, extension, me, {
+      pollMs: 60_000,
+      ignore: new Set(),
+      oncall: { channel: "C_ON", extension: oncallExt, active: async () => active },
+    });
+  try {
+    channel = [human(ts(5), "Karun", "U07", "before the shift")];
+    await watcher(false).poll(); // off call: the channel is not read
+    assert.throws(() => store.resolveSession("Slack"), /No session/);
+    const on = watcher(true);
+    channel = [];
+    await on.poll(); // the shift starts now; earlier messages stay history
+    channel = [
+      human(ts(-30), "Karun", "U07", "before the shift"),
+      pd(ts(6), "High", "Backlog_High"),
+      pd(ts(7), "Low", "Latency_High"),
+      human(ts(8), "Karun", "U07", "is image scanning down?"),
+      human(ts(9), "Me Myself", "UME", "my own note"),
+      "=== Message from Deploy (B054) at 2026-10-27 13:00:00 PDT === \nMessage TS: " + ts(10) + "\nDeployed\n\n",
+    ];
+    await on.poll();
+    await on.poll();
+    const session = store.resolveSession("Slack");
+    const agents = (await store.agents(session)).filter((a) => a.id !== 1);
+    assert.deepEqual(agents.map((a) => a.name).sort(), ["#ts-oncall · Karun", "Alert · Backlog_High"]);
+    const h = store.harness(session);
+    const tools = async (id: number) => (await (await h.conversation(id as never, ctx))!.agent(ctx)).tools.map((x) => x.name).sort();
+    for (const a of agents) assert.deepEqual(await tools(a.id), ["draft_reply", "prod_read", "slack_read"]);
+  } finally {
+    await store.close();
+    await t.cleanup();
+  }
+
+  // prod_read offers and runs only the allowlisted read tools.
+  const prodRead = oncallExt.tools!.find((x) => x.name === "prod_read")!;
+  const run = (args: Record<string, unknown>) =>
+    (prodRead.execute as (a: unknown, api: unknown, c: unknown) => Promise<{ content: { text: string }[] }>)(args, {}, ctx);
+  assert.match((await run({ server: "logs" })).content[0].text, /^## search_logs/);
+  assert.doesNotMatch((await run({ server: "logs" })).content[0].text, /update_issue/);
+  await assert.rejects(() => run({ server: "sentry", tool: "update_issue", args: {} }), /not allowed/);
+  assert.equal((await run({ server: "logs", tool: "search_logs", args: {} })).content[0].text, "rows");
+  assert.deepEqual(gatewayCalls, ["search_logs"]);
 });

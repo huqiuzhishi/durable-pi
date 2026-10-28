@@ -7,7 +7,9 @@ import { Store } from "./store.js";
 import { bearerAuth } from "./auth.js";
 import { errorMiddleware } from "./errors.js";
 import { v1 } from "./routes.js";
-import { gatewaySlack, slackExtension, SlackWatcher, type SlackMe } from "./slack.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { gatewayClient, gatewaySlack, oncallExtension, pagerdutyOnCall, slackExtension, SlackWatcher, type SlackMe } from "./slack.js";
 
 delete process.env.TMUX;
 delete process.env.TMUX_PANE;
@@ -17,12 +19,27 @@ const config = loadConfig();
 const slack = process.env.DPI_SLACK === "1" ? gatewaySlack() : undefined;
 const me: SlackMe = { id: "", name: "" };
 const slackExt = slack && slackExtension(slack, me);
+// DPI_ONCALL_CHANNEL and DPI_ONCALL_PD_POLICY add the on-call channel while PagerDuty shows you on call in that policy.
+const oncallChannel = slack ? process.env.DPI_ONCALL_CHANNEL : undefined;
+const oncallExt = oncallChannel && oncallExtension(gatewayClient, me, oncallChannel);
+const oncall = oncallExt
+  ? {
+      channel: oncallChannel!,
+      extension: oncallExt,
+      active: pagerdutyOnCall(
+        process.env.DPI_ONCALL_PD_CLI ?? join(homedir(), ".local/share/dpi/pd_cli.py"),
+        process.env.DPI_ONCALL_PD_POLICY ?? "",
+        () => me.name,
+      ),
+    }
+  : undefined;
+if (oncall && !process.env.DPI_ONCALL_PD_POLICY) throw Error("DPI_ONCALL_CHANNEL needs DPI_ONCALL_PD_POLICY");
 const store = await Store.open({
   dataDir: config.dataDir,
   startDirs: config.startDirs,
   name: config.name,
   provider: config.provider,
-  ...(slackExt ? { extensions: [slackExt] } : {}),
+  ...(slackExt ? { extensions: oncallExt ? [slackExt, oncallExt] : [slackExt] } : {}),
 });
 const watcher =
   slack &&
@@ -30,6 +47,7 @@ const watcher =
   new SlackWatcher(store, slack, slackExt, me, {
     pollMs: Number(process.env.DPI_SLACK_POLL_SECONDS ?? 60) * 1000,
     ignore: new Set((process.env.DPI_SLACK_IGNORE ?? "").split(",").map((s) => s.trim()).filter(Boolean)),
+    ...(oncall ? { oncall } : {}),
   });
 watcher?.start();
 
