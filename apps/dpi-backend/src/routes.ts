@@ -124,6 +124,7 @@ export function v1(store: Store) {
       res.json(await store.agentSummary(L(res).row, L(res).c));
     }),
   );
+  r.delete(a, route(async (_req, res) => res.json(await store.archiveAgent(L(res).row, L(res).c))));
   r.get(`${a}/events`, route(async (req, res) => agentStream(store, L(res), req, res)));
   r.get(
     `${a}/entries`,
@@ -137,8 +138,9 @@ export function v1(store: Store) {
   r.post(
     `${a}/messages`,
     route(async (req, res) => {
-      const { h, c } = L(res);
+      const { row, h, c } = L(res);
       const submission = await store.send(c, req.body ?? {});
+      store.unarchiveAgent(row, c.id as number);
       const waitMs = Number(req.body?.waitMs ?? 0) || 0;
       if (!waitMs) return res.status(202).json({ submissionId: submission.id, status: "queued" });
       const closed = new AbortController();

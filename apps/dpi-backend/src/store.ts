@@ -214,6 +214,7 @@ export class Store {
     this.catalog.exec(`PRAGMA journal_mode=WAL;
       CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,name TEXT NOT NULL,cwd TEXT NOT NULL,dbPath TEXT NOT NULL UNIQUE,createdAt INTEGER NOT NULL,model TEXT NOT NULL,provider TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS conversation_names(sessionId TEXT NOT NULL,conversationId INTEGER NOT NULL,name TEXT NOT NULL,PRIMARY KEY(sessionId,conversationId));
+      CREATE TABLE IF NOT EXISTS conversation_archived(sessionId TEXT NOT NULL,conversationId INTEGER NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(sessionId,conversationId));
       CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS requests(key TEXT PRIMARY KEY,route TEXT NOT NULL,status INTEGER NOT NULL,body TEXT NOT NULL,createdAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS session_spawns(key TEXT PRIMARY KEY,sessionId TEXT NOT NULL);
@@ -542,6 +543,7 @@ export class Store {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
     this.catalog.prepare("DELETE FROM conversation_names WHERE sessionId=?").run(row.id);
+    this.catalog.prepare("DELETE FROM conversation_archived WHERE sessionId=?").run(row.id);
     this.catalog.prepare("DELETE FROM sessions WHERE id=?").run(row.id);
     this.errors.delete(row.id);
     this.notify();
@@ -803,6 +805,45 @@ export class Store {
       )
       .run(row.id, agentId, clean);
     this.notify();
+  }
+
+  /** Stop the agent's work and hide it, with the agents nested under it, from the tree. Nothing is deleted. */
+  async archiveAgent(row: SessionRow, c: Conversation) {
+    if ((c.id as number) === 1) throw invalid("Main cannot be archived; archive the session instead");
+    await c.abort(ctx, { background: true });
+    this.catalog
+      .prepare("INSERT OR REPLACE INTO conversation_archived VALUES(?,?,?)")
+      .run(row.id, c.id as number, Date.now());
+    this.notify();
+    return { archived: c.id as number };
+  }
+
+  /** A new message brings an archived agent back. */
+  unarchiveAgent(row: SessionRow, agentId: number) {
+    const { changes } = this.catalog
+      .prepare("DELETE FROM conversation_archived WHERE sessionId=? AND conversationId=?")
+      .run(row.id, agentId);
+    if (changes) this.notify();
+  }
+
+  /** Agents that are not archived and have no archived ancestor. */
+  private visibleAgents(row: SessionRow, agents: AgentSummary[]) {
+    const archived = new Set(
+      (
+        this.catalog.prepare("SELECT conversationId FROM conversation_archived WHERE sessionId=?").all(row.id) as {
+          conversationId: number;
+        }[]
+      ).map((r) => r.conversationId),
+    );
+    if (!archived.size) return agents;
+    const byId = new Map(agents.map((a) => [a.id, a]));
+    const hidden = (a: AgentSummary | undefined, seen = new Set<number>()): boolean => {
+      if (!a || seen.has(a.id)) return false;
+      if (archived.has(a.id)) return true;
+      seen.add(a.id);
+      return hidden(byId.get(a.parentId ?? a.ownerAgentId ?? -1), seen);
+    };
+    return agents.filter((a) => !hidden(a));
   }
 
   async createAgent(row: SessionRow, body: { from?: unknown; name?: unknown }) {
@@ -1164,7 +1205,7 @@ export class Store {
     if (!this.opened.has(row.id))
       return { ...this.sessionSummaryBase(row), busy: false, agents: [], error: this.errors.get(row.id) ?? "Session unavailable" };
     const agents = await this.agents(row);
-    return { ...this.sessionSummaryBase(row), busy: agents.some((a) => a.busy), agents };
+    return { ...this.sessionSummaryBase(row), busy: agents.some((a) => a.busy), agents: this.visibleAgents(row, agents) };
   }
 
   async tree(): Promise<DeviceTree> {

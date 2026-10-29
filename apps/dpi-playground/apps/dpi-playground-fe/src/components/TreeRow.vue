@@ -59,6 +59,7 @@ const dot = computed(() => {
   const s = device.value?.status;
   return s === "online" ? "on" : s === "checking" ? "chk" : s === "offline" ? "off" : "err";
 });
+const archivable = computed(() => !!session.value || (!!agent.value && agent.value.id !== 1));
 const label = computed(() => device.value?.id ?? session.value?.name ?? agent.value?.name ?? "");
 const title = computed(() => {
   if (device.value)
@@ -85,6 +86,7 @@ const title = computed(() => {
     :data-key="node.key"
     :title="title"
     @click="emit('activate')"
+    @contextmenu="archivable && online && ($event.preventDefault(), emit('action', 'archive'))"
   >
     <button
       v-if="hasChildren"
@@ -177,7 +179,16 @@ const title = computed(() => {
           title="Rename agent"
           @click="emit('action', 'rename')"
         >
-          <Pencil :size="16" />
+          <Pencil :size="16" /></button
+        ><button
+          v-if="archivable"
+          class="icon-button"
+          :disabled="!online"
+          :aria-label="`Archive agent ${label}`"
+          title="Archive agent (or right-click)"
+          @click="emit('action', 'archive')"
+        >
+          <Archive :size="16" />
         </button>
       </span>
     </template>

@@ -217,6 +217,10 @@ export class AgentHandle {
   rename(name: string) {
     return this.client.request<AgentSummary>("PATCH", this.base, { name });
   }
+  /** Stops the agent's work and hides it from the tree until its next message. */
+  archive() {
+    return this.client.request<{ archived: number }>("DELETE", this.base);
+  }
   send(content: string, whenBusy: WhenBusy = "followUp", requestId = newId(), waitMs?: number) {
     return this.client.request<SendResult>(
       "POST",

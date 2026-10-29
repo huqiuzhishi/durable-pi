@@ -89,6 +89,16 @@ test("REST v1: auth, sessions, agents, messages, waits, idempotency, errors", as
     const agents = await client.session(s1.id).agents();
     assert.deepEqual(agents.map((a) => a.name).sort(), ["Lead", "branch", "reviewer"]);
 
+    // Archiving an agent hides it from the tree until its next message; Main stays.
+    const treeAgents = async () =>
+      (await client.tree()).sessions.find((s) => s.id === s1.id)!.agents.map((a) => a.name).sort();
+    await assert.rejects(() => main.archive(), (e: DpiError) => e.code === "invalid");
+    assert.deepEqual(await client.agent(s1.id, "branch").archive(), { archived: fork.id });
+    assert.deepEqual(await treeAgents(), ["Lead", "reviewer"]);
+    assert.equal((await client.agent(s1.id, "branch").get()).id, fork.id);
+    await client.agent(s1.id, "branch").send("back", "followUp", "req-back", 5000);
+    assert.deepEqual(await treeAgents(), ["Lead", "branch", "reviewer"]);
+
     // Demo extension + docs.
     // Durable jobs: definitions on the device, a run started by a client, then one started by the agent's tool.
     assert.deepEqual((await client.device()).jobs?.map((j) => j.id), ["workspace-snapshot", "release-check", "change-watch"]);

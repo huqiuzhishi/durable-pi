@@ -111,6 +111,19 @@ async function action(node: TreeNode, name: string) {
       submit: "Save name",
       run: (value) => client.agent(node.sessionId, a.id).rename(value),
     };
+  else if (name === "archive")
+    ui.dialog = {
+      kind: "prompt",
+      title: `Archive ${a.name}?`,
+      hint: `Stops its work and hides it${node.children.length ? " and the agents under it" : ""} from the tree. Its history stays on ${device.id}; a new message to it brings it back.`,
+      submit: "Archive agent",
+      danger: true,
+      run: async () => {
+        await client.agent(node.sessionId, a.id).archive();
+        const sel = selected.value;
+        if (sel?.sessionId === node.sessionId && sel.agentId === a.id) select(undefined);
+      },
+    };
 }
 
 function move(delta: number) {

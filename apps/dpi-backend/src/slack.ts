@@ -551,5 +551,6 @@ export class SlackWatcher {
       );
     }
     await this.store.send(c, { content: prompt(m, kind), requestId: `slack:${m.channel}:${m.ts}` });
+    this.store.unarchiveAgent(row, c.id as number);
   }
 }
