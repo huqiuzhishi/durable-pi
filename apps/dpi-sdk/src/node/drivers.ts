@@ -204,16 +204,14 @@ function fill(template: string, values: Record<string, string>) {
   });
 }
 
-/** The pid file names the setsid process group; a stale one (after a reboot) may name an unrelated process. */
+/** Each start is its own setsid process group led by the loop script, so stop every one of them, not only the pid file's. */
 function nohupStop(device: NetDevice) {
-  const pid = `${shPath(device.homeDir)}/dpi-backend.pid`;
-  return `if [ -s "${pid}" ] && ps -o args= -p "$(cat "${pid}")" 2>/dev/null | grep -q dpi-backend.sh; then
-  G=$(cat "${pid}")
-  kill -TERM -- "-$G" 2>/dev/null || true
-  for i in $(seq 40); do kill -0 -- "-$G" 2>/dev/null || break; sleep 0.5; done
-  kill -KILL -- "-$G" 2>/dev/null || true
-fi
-rm -f "${pid}"`;
+  const home = shPath(device.homeDir);
+  return `loops() { ps -u "$(id -u)" -o pid=,args= | awk -v s="sh ${home}/dpi-backend.sh" '{p=$1; $1=""; sub(/^ +/, ""); if ($0 == s) print p}'; }
+for G in $(loops); do kill -TERM "-$G" 2>/dev/null || true; done
+for i in $(seq 40); do [ -z "$(loops)" ] && break; sleep 0.5; done
+for G in $(loops); do kill -KILL "-$G" 2>/dev/null || true; done
+rm -f "${home}/dpi-backend.pid"`;
 }
 
 function nohupStart(device: NetDevice) {
