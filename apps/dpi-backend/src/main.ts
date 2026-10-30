@@ -10,6 +10,7 @@ import { v1 } from "./routes.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { gatewayClient, gatewaySlack, oncallExtension, pagerdutyOnCall, slackExtension, SlackWatcher, type SlackMe } from "./slack.js";
+import { ghCli, prReviewExtension, prStartExtension } from "./pr-review.js";
 
 delete process.env.TMUX;
 delete process.env.TMUX_PANE;
@@ -34,20 +35,29 @@ const oncall = oncallExt
     }
   : undefined;
 if (oncall && !process.env.DPI_ONCALL_PD_POLICY) throw Error("DPI_ONCALL_CHANNEL needs DPI_ONCALL_PD_POLICY");
+// DPI_PR_REVIEW=1: a review request in Slack gets its own review agent, which saves a pending GitHub review.
+let watcher: SlackWatcher | undefined;
+const prReviewExt =
+  slack && process.env.DPI_PR_REVIEW === "1"
+    ? prReviewExtension(ghCli(), slack, me, process.env.DPI_PR_CLONE_ROOT ?? join(homedir(), "git"))
+    : undefined;
+const prStartExt = prReviewExt && prStartExtension(me, (r) => watcher!.startReview(r));
+const extensions = [slackExt, oncallExt, prReviewExt, prStartExt].filter((e) => !!e);
 const store = await Store.open({
   dataDir: config.dataDir,
   startDirs: config.startDirs,
   name: config.name,
   provider: config.provider,
-  ...(slackExt ? { extensions: oncallExt ? [slackExt, oncallExt] : [slackExt] } : {}),
+  ...(extensions.length ? { extensions } : {}),
 });
-const watcher =
+watcher =
   slack &&
   slackExt &&
   new SlackWatcher(store, slack, slackExt, me, {
     pollMs: Number(process.env.DPI_SLACK_POLL_SECONDS ?? 60) * 1000,
     ignore: new Set((process.env.DPI_SLACK_IGNORE ?? "").split(",").map((s) => s.trim()).filter(Boolean)),
     ...(oncall ? { oncall } : {}),
+    ...(prReviewExt && prStartExt ? { review: { extension: prReviewExt, start: prStartExt } } : {}),
   });
 watcher?.start();
 

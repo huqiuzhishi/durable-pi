@@ -16,6 +16,7 @@ import {
   type Extension,
 } from "@earendil-works/pi-durable";
 import type { SessionRow, Store } from "./store.js";
+import { PrReview, type ReviewRequest } from "./pr-review.js";
 
 export interface SlackApi {
   /** Calls one MCP gateway tool and returns its text result; throws on a tool error. */
@@ -56,12 +57,16 @@ export const SlackThread = defineDoc<{
 
 const EXCHANGE = "https://llm-gateway.simulprod.com/sapi-authorization/v1/lca/ghe-exchange?aud=rbx.prod.mcp-gateway";
 
-function run(cmd: string, args: string[], opts: { env?: Record<string, string>; input?: string; cwd?: string } = {}) {
+export function run(
+  cmd: string,
+  args: string[],
+  opts: { env?: Record<string, string>; input?: string; cwd?: string; timeoutMs?: number } = {},
+) {
   return new Promise<string>((resolve, reject) => {
     const child = execFile(
       cmd,
       args,
-      { env: { ...process.env, ...opts.env }, cwd: opts.cwd, timeout: 90_000, maxBuffer: 64 << 20 },
+      { env: { ...process.env, ...opts.env }, cwd: opts.cwd, timeout: opts.timeoutMs ?? 90_000, maxBuffer: 64 << 20 },
       (err, stdout, stderr) =>
         err ? reject(Error(`${cmd} ${args[0] ?? ""} failed: ${(stderr || err.message).trim().slice(0, 300)}`)) : resolve(stdout),
     );
@@ -213,7 +218,8 @@ const READ_TOOLS = [
   "slack_search_channels",
 ] as const;
 
-export function slackExtension(slack: SlackApi, me: SlackMe): Extension {
+/** slack_read and draft_reply, which every Slack-facing agent uses. */
+export function slackTools(slack: SlackApi, me: SlackMe) {
   const read = defineTool({
     name: "slack_read",
     description:
@@ -266,9 +272,13 @@ export function slackExtension(slack: SlackApi, me: SlackMe): Extension {
       };
     },
   });
+  return [read, draft] as const;
+}
+
+export function slackExtension(slack: SlackApi, me: SlackMe): Extension {
   return defineExtension({
     name: "slack",
-    tools: [read, draft],
+    tools: [...slackTools(slack, me)],
     sections: [
       section(
         "slack",
@@ -382,10 +392,13 @@ export class SlackWatcher {
       pollMs: number;
       ignore: ReadonlySet<string>;
       oncall?: { channel: string; extension: Extension; active: () => Promise<boolean> };
+      /** `extension` is the review agents' extension; `start` gives thread agents start_pr_review. */
+      review?: { extension: Extension; start: Extension };
     },
   ) {
     store.catalog.exec(`CREATE TABLE IF NOT EXISTS slack_threads(sessionId TEXT NOT NULL,key TEXT NOT NULL,conversationId INTEGER NOT NULL,PRIMARY KEY(sessionId,key));
-      CREATE TABLE IF NOT EXISTS slack_seen(key TEXT PRIMARY KEY,at INTEGER NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS slack_seen(key TEXT PRIMARY KEY,at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS pr_reviews(sessionId TEXT NOT NULL,key TEXT NOT NULL,conversationId INTEGER NOT NULL,PRIMARY KEY(sessionId,key));`);
   }
 
   start() {
@@ -492,6 +505,48 @@ export class SlackWatcher {
     }
   }
 
+  /** One review agent per pull request. A repeat request goes to the same agent and moves its Slack note to the asking thread. */
+  async startReview(r: ReviewRequest) {
+    const review = this.options.review;
+    if (!review) throw Error("PR reviews are off");
+    const row = await this.session();
+    const h = this.store.harness(row);
+    const known = this.store.catalog
+      .prepare("SELECT conversationId FROM pr_reviews WHERE sessionId=? AND key=?")
+      .get(row.id, r.pr.key) as { conversationId: number } | undefined;
+    let c = known ? await h.conversation(known.conversationId as ConversationId, ctx) : undefined;
+    if (c) {
+      const id = c.id;
+      await c.commit(async (tx) => void Object.assign(await tx.doc(SlackThread, id), r.thread), ctx);
+    } else {
+      const policy = this.store.opened.get(row.id)?.policy;
+      c = await h.createConversation(
+        {
+          ownership: { kind: "ownerless" },
+          agent: {
+            model: { provider: row.provider, modelId: row.model },
+            cwd: row.cwd,
+            thinkingLevel: "medium",
+            extensions: policy ? [review.extension, policy] : [review.extension],
+          },
+          init: async (tx, id) => {
+            (await tx.doc(PrReview, id)).url = r.pr.url;
+            Object.assign(await tx.doc(SlackThread, id), r.thread);
+          },
+        },
+        ctx,
+      );
+      this.store.catalog.prepare("INSERT OR REPLACE INTO pr_reviews VALUES(?,?,?)").run(row.id, r.pr.key, c.id as number);
+      this.store.setAgentName(row, c.id as number, `PR · ${r.pr.repo}#${r.pr.number}`);
+    }
+    await this.store.send(c, {
+      content: `Review request for ${r.pr.url}, asked in ${r.thread.channelName} (${r.thread.channel}${r.thread.threadTs ? `, thread ${r.thread.threadTs}` : ""}).`,
+      requestId: r.requestId,
+    });
+    this.store.unarchiveAgent(row, c.id as number);
+    return `${known ? "Sent to the existing" : "Started the"} review agent "PR · ${r.pr.repo}#${r.pr.number}". It saves a pending GitHub review and drafts the Slack note in this thread.`;
+  }
+
   private async session(): Promise<SessionRow> {
     const id = this.meta("slack_session");
     const row = id ? this.store.list().find((r) => r.id === id) : undefined;
@@ -515,6 +570,13 @@ export class SlackWatcher {
       .prepare("SELECT conversationId FROM slack_threads WHERE sessionId=? AND key=?")
       .get(row.id, key) as { conversationId: number } | undefined;
     let c = known ? await h.conversation(known.conversationId as ConversationId, ctx) : undefined;
+    const start = this.options.review?.start;
+    if (c && start) {
+      // Thread agents created before PR reviews were on get start_pr_review on their next message.
+      const agent = await c.agent(ctx);
+      if (!agent.extensions.some((e) => e.name === start.name))
+        await c.configure({ extensions: [...agent.extensions, start] }, ctx);
+    }
     if (!c) {
       const policy = this.store.opened.get(row.id)?.policy;
       c = await h.createConversation(
@@ -527,6 +589,7 @@ export class SlackWatcher {
             extensions: [
               this.extension,
               ...(kind !== "direct" && this.options.oncall ? [this.options.oncall.extension] : []),
+              ...(start ? [start] : []),
               ...(policy ? [policy] : []),
             ],
           },

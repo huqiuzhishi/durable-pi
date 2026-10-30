@@ -8,6 +8,7 @@
 //   "search: <words>" → one search_history call
 //   "page: <summary>" → one ping_on_call_engineer call
 //   "draft: <text>" → one draft_reply call (the Slack agent)
+//   "review: <url>" → one start_pr_review call; "save: <json>" → one save_review call (PR reviews)
 //   "Release check: …" (the release-check job's subagent) → one bash call
 //   anything else  → "Echo: <text>"
 import type { MutableModels } from "@earendil-works/pi-ai/models";
@@ -71,6 +72,8 @@ export function installFaux(models: MutableModels) {
     if (prompt.startsWith("search:")) return call("search_history", { query: prompt.slice(7).trim() });
     if (prompt.startsWith("page:")) return call("ping_on_call_engineer", { summary: prompt.slice(5).trim() });
     if (prompt.startsWith("draft:")) return call("draft_reply", { text: prompt.slice(6).trim() });
+    if (prompt.startsWith("review:")) return call("start_pr_review", { url: prompt.slice(7).trim() });
+    if (prompt.startsWith("save:")) return call("save_review", JSON.parse(prompt.slice(5)));
     if (prompt.startsWith("Release check:"))
       return call("bash", { command: "git log --oneline -5 2>/dev/null || echo 'no git history'; ls | head -5" });
     if (prompt.startsWith("slow:")) return fauxAssistantMessage(fauxText(prompt.slice(5).trim().repeat(4)));
