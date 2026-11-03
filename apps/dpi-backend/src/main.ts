@@ -43,6 +43,11 @@ const prReviewExt =
     : undefined;
 const prStartExt = prReviewExt && prStartExtension(me, (r) => watcher!.startReview(r));
 const extensions = [slackExt, oncallExt, prReviewExt, prStartExt].filter((e) => !!e);
+// DPI_REMOTE_CHANNEL: your own messages in that Slack channel drive an agent here; answers are posted back there.
+const [remoteSession, remoteAgent] = (process.env.DPI_REMOTE_AGENT ?? "slack-bot/personal-bot").split("/");
+const remote = process.env.DPI_REMOTE_CHANNEL
+  ? { channel: process.env.DPI_REMOTE_CHANNEL, session: remoteSession, agent: remoteAgent ?? "personal-bot" }
+  : undefined;
 const store = await Store.open({
   dataDir: config.dataDir,
   startDirs: config.startDirs,
@@ -58,6 +63,7 @@ watcher =
     ignore: new Set((process.env.DPI_SLACK_IGNORE ?? "").split(",").map((s) => s.trim()).filter(Boolean)),
     ...(oncall ? { oncall } : {}),
     ...(prReviewExt && prStartExt ? { review: { extension: prReviewExt, start: prStartExt } } : {}),
+    ...(remote ? { remote } : {}),
   });
 watcher?.start();
 

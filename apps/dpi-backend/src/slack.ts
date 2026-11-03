@@ -394,11 +394,14 @@ export class SlackWatcher {
       oncall?: { channel: string; extension: Extension; active: () => Promise<boolean> };
       /** `extension` is the review agents' extension; `start` gives thread agents start_pr_review. */
       review?: { extension: Extension; start: Extension };
+      /** Your own messages in `channel` drive an agent on this device; its answers are posted there, nowhere else. */
+      remote?: { channel: string; session: string; agent: string };
     },
   ) {
     store.catalog.exec(`CREATE TABLE IF NOT EXISTS slack_threads(sessionId TEXT NOT NULL,key TEXT NOT NULL,conversationId INTEGER NOT NULL,PRIMARY KEY(sessionId,key));
       CREATE TABLE IF NOT EXISTS slack_seen(key TEXT PRIMARY KEY,at INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS pr_reviews(sessionId TEXT NOT NULL,key TEXT NOT NULL,conversationId INTEGER NOT NULL,PRIMARY KEY(sessionId,key));`);
+      CREATE TABLE IF NOT EXISTS pr_reviews(sessionId TEXT NOT NULL,key TEXT NOT NULL,conversationId INTEGER NOT NULL,PRIMARY KEY(sessionId,key));
+      CREATE TABLE IF NOT EXISTS slack_remote(ts TEXT PRIMARY KEY,sessionId TEXT NOT NULL,submissionId INTEGER NOT NULL,target TEXT NOT NULL,posted INTEGER NOT NULL DEFAULT 0);`);
   }
 
   start() {
@@ -463,8 +466,80 @@ export class SlackWatcher {
       await this.pollOnCall();
     } catch (e) {
       console.error("[slack]", e instanceof Error ? e.message : e);
+    }
+    try {
+      if (this.me.id) await this.pollRemote();
+    } catch (e) {
+      console.error("[slack] remote:", e instanceof Error ? e.message : e);
     } finally {
       this.polling = false;
+    }
+  }
+
+  private post(text: string, threadTs: string) {
+    return this.slack.call("slack_send_message", {
+      channel_id: this.options.remote!.channel,
+      message: text.length > 3800 ? `${text.slice(0, 3800)}\n… (cut; the full answer is in the hub)` : text,
+      thread_ts: threadTs,
+    });
+  }
+
+  /** Remote control: each new top-level message of yours in the channel goes to `@session/agent` (or the default). */
+  private async pollRemote() {
+    const remote = this.options.remote;
+    if (!remote) return;
+    let since = Number(this.meta("slack_remote_since"));
+    if (!since) this.setMeta("slack_remote_since", String((since = Date.now() / 1000)));
+    const messages = parseChannel(
+      await this.slack.call("slack_read_channel", { channel_id: remote.channel, limit: 20 }),
+      remote.channel,
+    );
+    for (const m of messages.sort((a, b) => Number(a.ts) - Number(b.ts))) {
+      if (Number(m.ts) <= since || m.bot || m.user !== this.me.id) continue;
+      if (this.store.catalog.prepare("SELECT 1 FROM slack_remote WHERE ts=?").get(m.ts)) continue;
+      const text = m.text.replace(new RegExp(`^\\s*<@${this.me.id}(\\|[^>]*)?>\\s*`), "");
+      const routed = text.match(/^@([^\s/]+)\/(\S+)\s*([\s\S]*)$/);
+      const [session, agent, content] = routed ? [routed[1], routed[2], routed[3]] : [remote.session, remote.agent, text];
+      if (!content.trim()) continue;
+      let row: SessionRow;
+      let c: Awaited<ReturnType<Store["resolveAgent"]>>["c"];
+      try {
+        row = this.store.resolveSession(session);
+        c = await this.store
+          .resolveAgent(row.id, agent)
+          .catch(async (e) => {
+            if ((e as { code?: string }).code !== "not_found") throw e;
+            const created = await this.store.createAgent(row, { name: agent });
+            return this.store.resolveAgent(row.id, String(created.id));
+          })
+          .then((r) => r.c);
+      } catch (e) {
+        await this.post(`Not sent: ${e instanceof Error ? e.message : e}`, m.ts);
+        this.store.catalog.prepare("INSERT INTO slack_remote VALUES(?,?,?,?,1)").run(m.ts, "", 0, `${session}/${agent}`);
+        continue;
+      }
+      const submission = await this.store.send(c, { content, requestId: `slack-remote:${remote.channel}:${m.ts}` });
+      this.store.unarchiveAgent(row, c.id as number);
+      this.store.catalog
+        .prepare("INSERT INTO slack_remote VALUES(?,?,?,?,0)")
+        .run(m.ts, row.id, submission.id as number, `${row.name}/${agent}`);
+    }
+    const open = this.store.catalog.prepare("SELECT * FROM slack_remote WHERE posted=0").all() as {
+      ts: string;
+      sessionId: string;
+      submissionId: number;
+      target: string;
+    }[];
+    for (const r of open) {
+      const row = this.store.list().find((s) => s.id === r.sessionId);
+      const result = row ? await this.store.settled(this.store.harness(row), r.submissionId) : undefined;
+      if (result && result.status !== "done" && result.status !== "unanswered") continue;
+      const body =
+        result?.status === "done"
+          ? result.answer.text || "(Done, with no text answer.)"
+          : `Not answered: ${result?.status === "unanswered" ? result.reason : "the session is gone"}`;
+      await this.post(`${body}\n\n_${r.target} on ${this.store.name}_`, r.ts);
+      this.store.catalog.prepare("UPDATE slack_remote SET posted=1 WHERE ts=?").run(r.ts);
     }
   }
 
