@@ -12,6 +12,7 @@ import {
   defineExtension,
   defineTool,
   section,
+  type Conversation,
   type ConversationId,
   type Extension,
 } from "@earendil-works/pi-durable";
@@ -590,9 +591,11 @@ export class SlackWatcher {
       .prepare("SELECT conversationId FROM pr_reviews WHERE sessionId=? AND key=?")
       .get(row.id, r.pr.key) as { conversationId: number } | undefined;
     let c = known ? await h.conversation(known.conversationId as ConversationId, ctx) : undefined;
+    const pi = this.piOf(row);
     if (c) {
       const id = c.id;
       await c.commit(async (tx) => void Object.assign(await tx.doc(SlackThread, id), r.thread), ctx);
+      await this.ensureExtensions(c, [pi]);
     } else {
       const policy = this.store.opened.get(row.id)?.policy;
       c = await h.createConversation(
@@ -602,7 +605,7 @@ export class SlackWatcher {
             model: { provider: row.provider, modelId: row.model },
             cwd: row.cwd,
             thinkingLevel: "medium",
-            extensions: policy ? [review.extension, policy] : [review.extension],
+            extensions: [review.extension, ...(pi ? [pi] : []), ...(policy ? [policy] : [])],
           },
           init: async (tx, id) => {
             (await tx.doc(PrReview, id)).url = r.pr.url;
@@ -620,6 +623,18 @@ export class SlackWatcher {
     });
     this.store.unarchiveAgent(row, c.id as number);
     return `${known ? "Sent to the existing" : "Started the"} review agent "PR · ${r.pr.repo}#${r.pr.number}". It saves a pending GitHub review and drafts the Slack note in this thread.`;
+  }
+
+  /** The device's Pi skills and tools (absent when the provider is not pi), which every agent gets by default. */
+  private piOf(row: SessionRow) {
+    return this.store.opened.get(row.id)?.addons.all.pi;
+  }
+
+  /** Agents created before an extension existed get it on their next message. */
+  private async ensureExtensions(c: Conversation, wanted: (Extension | undefined)[]) {
+    const agent = await c.agent(ctx);
+    const missing = wanted.filter((e): e is Extension => !!e && !agent.extensions.some((x) => x.name === e.name));
+    if (missing.length) await c.configure({ extensions: [...agent.extensions, ...missing] }, ctx);
   }
 
   private async session(): Promise<SessionRow> {
@@ -646,12 +661,8 @@ export class SlackWatcher {
       .get(row.id, key) as { conversationId: number } | undefined;
     let c = known ? await h.conversation(known.conversationId as ConversationId, ctx) : undefined;
     const start = this.options.review?.start;
-    if (c && start) {
-      // Thread agents created before PR reviews were on get start_pr_review on their next message.
-      const agent = await c.agent(ctx);
-      if (!agent.extensions.some((e) => e.name === start.name))
-        await c.configure({ extensions: [...agent.extensions, start] }, ctx);
-    }
+    const pi = this.piOf(row);
+    if (c) await this.ensureExtensions(c, [start, pi]);
     if (!c) {
       const policy = this.store.opened.get(row.id)?.policy;
       c = await h.createConversation(
@@ -665,6 +676,7 @@ export class SlackWatcher {
               this.extension,
               ...(kind !== "direct" && this.options.oncall ? [this.options.oncall.extension] : []),
               ...(start ? [start] : []),
+              ...(pi ? [pi] : []),
               ...(policy ? [policy] : []),
             ],
           },
