@@ -570,7 +570,7 @@ export class SlackWatcher {
         result?.status === "done"
           ? result.answer.text || "(Done, with no text answer.)"
           : `Not answered: ${result?.status === "unanswered" ? result.reason : "the session is gone"}`;
-      await this.post(`${body}\n\n_${r.target} on ${this.store.name}_\n----`, r.threadTs ?? r.ts);
+      await this.post(`${body}\n\n----`, r.threadTs ?? r.ts);
       this.store.catalog.prepare("UPDATE slack_remote SET posted=1 WHERE ts=?").run(r.ts);
     } finally {
       this.posting.delete(r.ts);
@@ -590,11 +590,15 @@ export class SlackWatcher {
     this.store.catalog.prepare("UPDATE remote_threads SET replies=replies+1 WHERE threadTs=?").run(threadTs);
   }
 
-  /** Answers and notes end with `_<target> on <device>_`: they show as you, so this is how a thread read skips them. */
+  /**
+   * Posts show as you, so a thread read skips them by the ts recorded when posting, or by their shape when that is
+   * missing: the working note, or a `----` line, which ends every answer.
+   */
   private isOwnPost(m: SlackMessage) {
     return (
       !!this.store.catalog.prepare("SELECT 1 FROM remote_posts WHERE ts=?").get(m.ts) ||
-      new RegExp(`^_[^\\n]+ on ${this.store.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)?_$`, "m").test(m.text)
+      /^_Working on it \(.+\)_$/m.test(m.text) ||
+      /^----$/m.test(m.text)
     );
   }
 
