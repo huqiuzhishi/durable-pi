@@ -570,7 +570,7 @@ export class SlackWatcher {
         result?.status === "done"
           ? result.answer.text || "(Done, with no text answer.)"
           : `Not answered: ${result?.status === "unanswered" ? result.reason : "the session is gone"}`;
-      await this.post(`${body}\n\n_${r.target} on ${this.store.name}_`, r.threadTs ?? r.ts);
+      await this.post(`${body}\n\n_${r.target} on ${this.store.name}_\n----`, r.threadTs ?? r.ts);
       this.store.catalog.prepare("UPDATE slack_remote SET posted=1 WHERE ts=?").run(r.ts);
     } finally {
       this.posting.delete(r.ts);
@@ -620,7 +620,7 @@ export class SlackWatcher {
       const c = row && (await this.store.harness(row).conversation(t.conversationId as ConversationId, ctx));
       if (!row || !c) {
         db.prepare("INSERT INTO slack_remote(ts,sessionId,submissionId,target,posted,threadTs) VALUES(?,?,?,?,1,?)").run(ts, "", 0, t.target, t.threadTs);
-        return this.post(`Not sent: ${t.target} is gone. Start a new thread.`, t.threadTs);
+        return this.post(`Not sent: ${t.target} is gone. Start a new thread.\n----`, t.threadTs);
       }
       const submission = await this.store.send(c, { content, requestId: `slack-remote:${remote.channel}:${ts}` });
       this.store.unarchiveAgent(row, c.id as number);
@@ -666,7 +666,7 @@ export class SlackWatcher {
         await deliver(thread(m.ts)!, m.ts, content);
       } catch (e) {
         db.prepare("INSERT INTO slack_remote(ts,sessionId,submissionId,target,posted,threadTs) VALUES(?,?,?,?,1,?)").run(m.ts, "", 0, "", m.ts);
-        await this.post(`Not sent: ${e instanceof Error ? e.message : e}`, m.ts);
+        await this.post(`Not sent: ${e instanceof Error ? e.message : e}\n----`, m.ts);
       }
     }
 

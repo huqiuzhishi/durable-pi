@@ -73,8 +73,8 @@ test("slack remote: a thread per conversation, follow-ups in the thread, posts o
     await until(async () => answers(ts(5)).length === 1 && answers(ts(7)).length === 1, 15000, "answers");
     assert.ok(posts.every((p) => p.channel_id === "C_ME"));
     assert.match(threads.get(ts(5))![0].text, /^_Working on it \(slack-bot\/pb · hello box on test\)_$/);
-    assert.match(answers(ts(5))[0], /^Echo: hello box\n\n_slack-bot\/pb · hello box on test_$/);
-    assert.match(answers(ts(7))[0], /^Echo: status please\n\n_ops\/Main on test_$/);
+    assert.match(answers(ts(5))[0], /^Echo: hello box\n\n_slack-bot\/pb · hello box on test_\n----$/);
+    assert.match(answers(ts(7))[0], /^Echo: status please\n\n_ops\/Main on test_\n----$/);
     assert.match(answers(ts(8))[0], /^Not sent: No session "nope"/);
     assert.equal(threads.get(ts(6)), undefined);
 
