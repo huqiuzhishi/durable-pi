@@ -36,6 +36,8 @@ export type SlackMessage = {
   ts: string;
   /** Parent message of the thread this message replies in; absent for top-level messages. */
   threadTs?: string;
+  /** Reply count of the thread this top-level message starts (slack_read_channel only). */
+  replies?: number;
   time: string;
   permalink: string;
   text: string;
@@ -200,6 +202,34 @@ export function parseChannel(text: string, channel: string): SlackMessage[] {
           time: head[3].trim(),
           permalink: "",
           text: after.split(/\n(?:Reactions|Files|Thread): /)[0].trim(),
+          ...(/^Thread: (\d+) repl/m.test(block) ? { replies: Number(block.match(/^Thread: (\d+) repl/m)![1]) } : {}),
+        },
+      ];
+    });
+}
+
+/** The parent and replies of a slack_read_thread result: `=== THREAD PARENT MESSAGE ===`, then `--- Reply N of M ---` blocks. */
+export function parseThread(text: string, channel: string): SlackMessage[] {
+  return unwrap(text)
+    .split(/^(?:=== THREAD PARENT MESSAGE ===|--- Reply \d+ of \d+ ---)\s*$/m)
+    .slice(1)
+    .flatMap((block) => {
+      const from = block.match(/^From: (.*?) \((\w+)\)\s*$/m);
+      const ts = block.match(/^Message TS: ([\d.]+)/m)?.[1];
+      if (!from || !ts) return [];
+      const email = from[1].match(/<([^>]*)>/)?.[1] ?? "";
+      const after = block.slice(block.indexOf("\n", block.indexOf("Message TS:")) + 1);
+      return [
+        {
+          channel,
+          channelName: "",
+          user: from[2],
+          userName: from[1].replace(/\s*<[^>]*>/, "").trim() || from[2],
+          bot: from[2].startsWith("B") || email.endsWith("@slack-bots.com"),
+          ts,
+          time: block.match(/^Time: (.+)$/m)?.[1]?.trim() ?? "",
+          permalink: "",
+          text: after.split(/\n=== THREAD REPLIES|\n(?:Reactions|Files): /)[0].trim(),
         },
       ];
     });
@@ -367,6 +397,8 @@ const pacificDay = (days: number) =>
 
 type Kind = "direct" | "oncall" | "alert";
 
+type RemoteRequest = { ts: string; sessionId: string; submissionId: number; target: string; threadTs: string | null };
+
 const prompt = (m: SlackMessage, kind: Kind) =>
   [
     kind === "alert"
@@ -383,6 +415,13 @@ export class SlackWatcher {
   private timer?: NodeJS.Timeout;
   private polling = false;
   private onCall = { active: false, checkedAt: 0 };
+  private remoteTimer?: NodeJS.Timeout;
+  private remotePolling = false;
+  private stopped = false;
+  /** Until then the remote channel is polled every 10 s; each message of yours extends it. */
+  private activeUntil = 0;
+  private readonly waits = new AbortController();
+  private readonly posting = new Set<string>();
 
   constructor(
     private readonly store: Store,
@@ -395,23 +434,53 @@ export class SlackWatcher {
       oncall?: { channel: string; extension: Extension; active: () => Promise<boolean> };
       /** `extension` is the review agents' extension; `start` gives thread agents start_pr_review. */
       review?: { extension: Extension; start: Extension };
-      /** Your own messages in `channel` drive an agent on this device; its answers are posted there, nowhere else. */
-      remote?: { channel: string; session: string; agent: string };
+      /** Your own messages in `channel` drive agents in `session` (or `@session/agent`); answers are posted there only. */
+      remote?: { channel: string; session: string };
     },
   ) {
     store.catalog.exec(`CREATE TABLE IF NOT EXISTS slack_threads(sessionId TEXT NOT NULL,key TEXT NOT NULL,conversationId INTEGER NOT NULL,PRIMARY KEY(sessionId,key));
       CREATE TABLE IF NOT EXISTS slack_seen(key TEXT PRIMARY KEY,at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS pr_reviews(sessionId TEXT NOT NULL,key TEXT NOT NULL,conversationId INTEGER NOT NULL,PRIMARY KEY(sessionId,key));
-      CREATE TABLE IF NOT EXISTS slack_remote(ts TEXT PRIMARY KEY,sessionId TEXT NOT NULL,submissionId INTEGER NOT NULL,target TEXT NOT NULL,posted INTEGER NOT NULL DEFAULT 0);`);
+      CREATE TABLE IF NOT EXISTS slack_remote(ts TEXT PRIMARY KEY,sessionId TEXT NOT NULL,submissionId INTEGER NOT NULL,target TEXT NOT NULL,posted INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS remote_threads(threadTs TEXT PRIMARY KEY,sessionId TEXT NOT NULL,conversationId INTEGER NOT NULL,target TEXT NOT NULL,owned INTEGER NOT NULL,replies INTEGER NOT NULL,lastAt INTEGER NOT NULL,archived INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS remote_posts(ts TEXT PRIMARY KEY);`);
+    if (!(store.catalog.prepare("PRAGMA table_info(slack_remote)").all() as { name: string }[]).some((c) => c.name === "threadTs"))
+      store.catalog.exec("ALTER TABLE slack_remote ADD COLUMN threadTs TEXT");
   }
 
   start() {
-    this.timer = setInterval(() => void this.poll(), this.options.pollMs);
-    void this.poll();
+    this.timer = setInterval(() => void this.pollMain(), this.options.pollMs);
+    void this.pollMain().then(() => this.remoteLoop());
   }
 
   stop() {
+    this.stopped = true;
     clearInterval(this.timer);
+    clearTimeout(this.remoteTimer);
+    this.waits.abort();
+  }
+
+  /** The remote channel has its own loop, so it never waits behind the DM, mention and on-call searches. */
+  private async remoteLoop() {
+    if (this.stopped || !this.options.remote) return;
+    await this.pollRemoteSafe();
+    if (this.stopped) return;
+    const fast = Date.now() < this.activeUntil;
+    this.remoteTimer = setTimeout(() => void this.remoteLoop(), fast ? 10_000 : this.options.pollMs);
+  }
+
+  private async pollRemoteSafe() {
+    if (this.remotePolling || !this.me.id) return;
+    this.remotePolling = true;
+    try {
+      await this.pollRemote();
+    } catch (e) {
+      const text = e instanceof Error ? e.message : String(e);
+      if (/Too Many Requests|\b429\b/.test(text)) this.activeUntil = 0;
+      console.error("[slack] remote:", text);
+    } finally {
+      this.remotePolling = false;
+    }
   }
 
   private meta(key: string) {
@@ -435,7 +504,13 @@ export class SlackWatcher {
   }
 
   /** One pass: find new DMs and mentions, and hand each to its thread's agent once. */
+  /** One pass of everything: the DM, mention and on-call searches, then the remote channel. */
   async poll() {
+    await this.pollMain();
+    await this.pollRemoteSafe();
+  }
+
+  private async pollMain() {
     if (this.polling) return;
     this.polling = true;
     try {
@@ -467,80 +542,165 @@ export class SlackWatcher {
       await this.pollOnCall();
     } catch (e) {
       console.error("[slack]", e instanceof Error ? e.message : e);
-    }
-    try {
-      if (this.me.id) await this.pollRemote();
-    } catch (e) {
-      console.error("[slack] remote:", e instanceof Error ? e.message : e);
     } finally {
       this.polling = false;
     }
   }
 
-  private post(text: string, threadTs: string) {
-    return this.slack.call("slack_send_message", {
-      channel_id: this.options.remote!.channel,
-      message: text.length > 3800 ? `${text.slice(0, 3800)}\n… (cut; the full answer is in the hub)` : text,
-      thread_ts: threadTs,
-    });
+  /** Waits for one remote request and posts its answer the moment it is done; a poll posts it after a restart. */
+  private async awaitAnswer(ts: string) {
+    while (!this.stopped) {
+      const r = this.store.catalog.prepare("SELECT * FROM slack_remote WHERE ts=? AND posted=0").get(ts) as RemoteRequest | undefined;
+      const row = r && this.store.list().find((s) => s.id === r.sessionId);
+      if (!r || !row) return;
+      const result = await this.store
+        .settled(this.store.harness(row), r.submissionId, 300_000, this.waits.signal)
+        .catch(() => undefined);
+      if (!result) return;
+      if (result.status === "done" || result.status === "unanswered") return this.finish(r, result);
+    }
   }
 
-  /** Remote control: each new top-level message of yours in the channel goes to `@session/agent` (or the default). */
-  private async pollRemote() {
-    const remote = this.options.remote;
-    if (!remote) return;
-    let since = Number(this.meta("slack_remote_since"));
-    if (!since) this.setMeta("slack_remote_since", String((since = Date.now() / 1000)));
-    const messages = parseChannel(
-      await this.slack.call("slack_read_channel", { channel_id: remote.channel, limit: 20 }),
-      remote.channel,
-    );
-    for (const m of messages.sort((a, b) => Number(a.ts) - Number(b.ts))) {
-      if (Number(m.ts) <= since || m.bot || m.user !== this.me.id) continue;
-      if (this.store.catalog.prepare("SELECT 1 FROM slack_remote WHERE ts=?").get(m.ts)) continue;
-      const text = m.text.replace(new RegExp(`^\\s*<@${this.me.id}(\\|[^>]*)?>\\s*`), "");
-      const routed = text.match(/^@([^\s/]+)\/(\S+)\s*([\s\S]*)$/);
-      const [session, agent, content] = routed ? [routed[1], routed[2], routed[3]] : [remote.session, remote.agent, text];
-      if (!content.trim()) continue;
-      let row: SessionRow;
-      let c: Awaited<ReturnType<Store["resolveAgent"]>>["c"];
-      try {
-        row = this.store.resolveSession(session);
-        c = await this.store
-          .resolveAgent(row.id, agent)
-          .catch(async (e) => {
-            if ((e as { code?: string }).code !== "not_found") throw e;
-            const created = await this.store.createAgent(row, { name: agent });
-            return this.store.resolveAgent(row.id, String(created.id));
-          })
-          .then((r) => r.c);
-      } catch (e) {
-        await this.post(`Not sent: ${e instanceof Error ? e.message : e}`, m.ts);
-        this.store.catalog.prepare("INSERT INTO slack_remote VALUES(?,?,?,?,1)").run(m.ts, "", 0, `${session}/${agent}`);
-        continue;
-      }
-      const submission = await this.store.send(c, { content, requestId: `slack-remote:${remote.channel}:${m.ts}` });
-      this.store.unarchiveAgent(row, c.id as number);
-      this.store.catalog
-        .prepare("INSERT INTO slack_remote VALUES(?,?,?,?,0)")
-        .run(m.ts, row.id, submission.id as number, `${row.name}/${agent}`);
-    }
-    const open = this.store.catalog.prepare("SELECT * FROM slack_remote WHERE posted=0").all() as {
-      ts: string;
-      sessionId: string;
-      submissionId: number;
-      target: string;
-    }[];
-    for (const r of open) {
-      const row = this.store.list().find((s) => s.id === r.sessionId);
-      const result = row ? await this.store.settled(this.store.harness(row), r.submissionId) : undefined;
-      if (result && result.status !== "done" && result.status !== "unanswered") continue;
+  private async finish(r: RemoteRequest, result: Awaited<ReturnType<Store["settled"]>> | undefined) {
+    if (this.posting.has(r.ts)) return;
+    this.posting.add(r.ts);
+    try {
+      if (!this.store.catalog.prepare("SELECT 1 FROM slack_remote WHERE ts=? AND posted=0").get(r.ts)) return;
       const body =
         result?.status === "done"
           ? result.answer.text || "(Done, with no text answer.)"
           : `Not answered: ${result?.status === "unanswered" ? result.reason : "the session is gone"}`;
-      await this.post(`${body}\n\n_${r.target} on ${this.store.name}_`, r.ts);
+      await this.post(`${body}\n\n_${r.target} on ${this.store.name}_`, r.threadTs ?? r.ts);
       this.store.catalog.prepare("UPDATE slack_remote SET posted=1 WHERE ts=?").run(r.ts);
+    } finally {
+      this.posting.delete(r.ts);
+    }
+  }
+
+  /** Posts in the remote channel's thread and remembers the post, so a later thread read skips it. */
+  private async post(text: string, threadTs: string) {
+    const out = await this.slack.call("slack_send_message", {
+      channel_id: this.options.remote!.channel,
+      message: text.length > 3800 ? `${text.slice(0, 3800)}\n… (cut; the full answer is in the hub)` : text,
+      thread_ts: threadTs,
+    });
+    const link = out.match(/\/p(\d{10})(\d{6})/);
+    const ts = out.match(/"(?:message_)?ts"\s*:\s*"(\d+\.\d+)"/)?.[1] ?? (link ? `${link[1]}.${link[2]}` : undefined);
+    if (ts) this.store.catalog.prepare("INSERT OR IGNORE INTO remote_posts VALUES(?)").run(ts);
+    this.store.catalog.prepare("UPDATE remote_threads SET replies=replies+1 WHERE threadTs=?").run(threadTs);
+  }
+
+  /** Answers and notes end with `_<target> on <device>_`: they show as you, so this is how a thread read skips them. */
+  private isOwnPost(m: SlackMessage) {
+    return (
+      !!this.store.catalog.prepare("SELECT 1 FROM remote_posts WHERE ts=?").get(m.ts) ||
+      new RegExp(`^_[^\\n]+ on ${this.store.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)?_$`, "m").test(m.text)
+    );
+  }
+
+  /**
+   * Remote control. A new top-level message of yours starts a new agent (or goes to `@session/agent`) that owns the
+   * thread; your replies in that thread go to the same agent, so the thread is its whole context. Agents this created
+   * are archived after 7 idle days; a reply in their thread brings them back.
+   */
+  private async pollRemote() {
+    const remote = this.options.remote;
+    if (!remote) return;
+    const db = this.store.catalog;
+    let since = Number(this.meta("slack_remote_since"));
+    if (!since) this.setMeta("slack_remote_since", String((since = Date.now() / 1000)));
+    const seen = (ts: string) => !!db.prepare("SELECT 1 FROM slack_remote WHERE ts=?").get(ts);
+    const mine = (m: SlackMessage) => Number(m.ts) > since && !m.bot && m.user === this.me.id && !seen(m.ts);
+    const strip = (text: string) => text.replace(new RegExp(`^\\s*<@${this.me.id}(\\|[^>]*)?>\\s*`), "");
+    type Thread = { threadTs: string; sessionId: string; conversationId: number; target: string; replies: number };
+    const thread = (ts: string) => db.prepare("SELECT * FROM remote_threads WHERE threadTs=?").get(ts) as Thread | undefined;
+
+    const deliver = async (t: Thread, ts: string, content: string) => {
+      const row = this.store.list().find((r) => r.id === t.sessionId);
+      const c = row && (await this.store.harness(row).conversation(t.conversationId as ConversationId, ctx));
+      if (!row || !c) {
+        db.prepare("INSERT INTO slack_remote(ts,sessionId,submissionId,target,posted,threadTs) VALUES(?,?,?,?,1,?)").run(ts, "", 0, t.target, t.threadTs);
+        return this.post(`Not sent: ${t.target} is gone. Start a new thread.`, t.threadTs);
+      }
+      const submission = await this.store.send(c, { content, requestId: `slack-remote:${remote.channel}:${ts}` });
+      this.store.unarchiveAgent(row, c.id as number);
+      db.prepare("INSERT INTO slack_remote(ts,sessionId,submissionId,target,posted,threadTs) VALUES(?,?,?,?,0,?)").run(ts, row.id, submission.id as number, t.target, t.threadTs);
+      db.prepare("UPDATE remote_threads SET lastAt=?,archived=0 WHERE threadTs=?").run(Date.now(), t.threadTs);
+      this.activeUntil = Date.now() + 10 * 60_000;
+      await this.post(`_Working on it (${t.target} on ${this.store.name})_`, t.threadTs).catch((e) =>
+        console.error("[slack] remote note:", e instanceof Error ? e.message : e),
+      );
+      void this.awaitAnswer(ts);
+    };
+    const medium = async (row: SessionRow, id: number) =>
+      this.store.configure(row, (await this.store.resolveAgent(row.id, String(id))).c, { thinkingLevel: "medium" });
+
+    const top = parseChannel(await this.slack.call("slack_read_channel", { channel_id: remote.channel, limit: 50 }), remote.channel);
+    for (const m of top.sort((a, b) => Number(a.ts) - Number(b.ts))) {
+      if (!mine(m) || this.isOwnPost(m)) continue;
+      const text = strip(m.text);
+      const routed = text.match(/^@([^\s/]+)\/(\S+)\s*([\s\S]*)$/);
+      const content = routed ? routed[3] : text;
+      if (!content.trim()) continue;
+      try {
+        const row = this.store.resolveSession(routed ? routed[1] : remote.session);
+        let owned = 1;
+        let id: number;
+        if (routed) {
+          id = await this.store
+            .resolveAgent(row.id, routed[2])
+            .then((r) => ((owned = 0), r.c.id as number))
+            .catch(async (e) => {
+              if ((e as { code?: string }).code !== "not_found") throw e;
+              const created = (await this.store.createAgent(row, { name: routed[2] })).id;
+              await medium(row, created);
+              return created;
+            });
+        } else {
+          id = (await this.store.createAgent(row, {})).id;
+          this.store.setAgentName(row, id, `pb · ${content.split("\n")[0].trim().slice(0, 40)}`);
+          await medium(row, id);
+        }
+        const name = (await this.store.agents(row)).find((a) => a.id === id)?.name ?? `#${id}`;
+        db.prepare("INSERT OR REPLACE INTO remote_threads VALUES(?,?,?,?,?,?,?,0)").run(m.ts, row.id, id, `${row.name}/${name}`, owned, m.replies ?? 0, Date.now());
+        await deliver(thread(m.ts)!, m.ts, content);
+      } catch (e) {
+        db.prepare("INSERT INTO slack_remote(ts,sessionId,submissionId,target,posted,threadTs) VALUES(?,?,?,?,1,?)").run(m.ts, "", 0, "", m.ts);
+        await this.post(`Not sent: ${e instanceof Error ? e.message : e}`, m.ts);
+      }
+    }
+
+    // A thread is read only when its reply count grew past what this watcher posted or handled.
+    for (const m of top) {
+      const t = thread(m.ts);
+      if (!t || (m.replies ?? 0) <= t.replies) continue;
+      const replies = parseThread(
+        await this.slack.call("slack_read_thread", { channel_id: remote.channel, message_ts: m.ts }),
+        remote.channel,
+      ).filter((r) => r.ts !== m.ts);
+      for (const r of replies.sort((a, b) => Number(a.ts) - Number(b.ts))) {
+        if (!mine(r) || this.isOwnPost(r)) continue;
+        const content = strip(r.text);
+        if (content.trim()) await deliver(t, r.ts, content);
+      }
+      db.prepare("UPDATE remote_threads SET replies=MAX(replies,?) WHERE threadTs=?").run(m.replies ?? 0, m.ts);
+    }
+
+    for (const r of db.prepare("SELECT * FROM slack_remote WHERE posted=0").all() as RemoteRequest[]) {
+      const row = this.store.list().find((s) => s.id === r.sessionId);
+      const result = row ? await this.store.settled(this.store.harness(row), r.submissionId) : undefined;
+      if (result && result.status !== "done" && result.status !== "unanswered") continue;
+      await this.finish(r, result);
+    }
+
+    const idle = db
+      .prepare("SELECT * FROM remote_threads WHERE owned=1 AND archived=0 AND lastAt<?")
+      .all(Date.now() - 7 * 86_400_000) as Thread[];
+    for (const t of idle) {
+      const row = this.store.list().find((s) => s.id === t.sessionId);
+      const c = row && (await this.store.harness(row).conversation(t.conversationId as ConversationId, ctx));
+      if (row && c) await this.store.archiveAgent(row, c).catch(() => {});
+      db.prepare("UPDATE remote_threads SET archived=1 WHERE threadTs=?").run(t.threadTs);
     }
   }
 

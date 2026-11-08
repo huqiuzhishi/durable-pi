@@ -43,10 +43,9 @@ const prReviewExt =
     : undefined;
 const prStartExt = prReviewExt && prStartExtension(me, (r) => watcher!.startReview(r));
 const extensions = [slackExt, oncallExt, prReviewExt, prStartExt].filter((e) => !!e);
-// DPI_REMOTE_CHANNEL: your own messages in that Slack channel drive an agent here; answers are posted back there.
-const [remoteSession, remoteAgent] = (process.env.DPI_REMOTE_AGENT ?? "slack-bot/personal-bot").split("/");
+// DPI_REMOTE_CHANNEL: your own messages in that Slack channel drive agents here; answers are posted back there.
 const remote = process.env.DPI_REMOTE_CHANNEL
-  ? { channel: process.env.DPI_REMOTE_CHANNEL, session: remoteSession, agent: remoteAgent ?? "personal-bot" }
+  ? { channel: process.env.DPI_REMOTE_CHANNEL, session: process.env.DPI_REMOTE_SESSION ?? "slack-bot" }
   : undefined;
 const store = await Store.open({
   dataDir: config.dataDir,
