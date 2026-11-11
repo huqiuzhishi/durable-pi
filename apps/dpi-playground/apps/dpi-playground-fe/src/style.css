@@ -1135,7 +1135,7 @@ svg {
   background: var(--surface-3);
   padding: 2px 5px;
   border-radius: 4px;
-  color: var(--text);
+  color: var(--tk-prop);
 }
 .markdown pre {
   padding: 16px;
@@ -1149,6 +1149,60 @@ svg {
 .markdown pre code {
   padding: 0;
   background: none;
+  color: var(--text);
+}
+.markdown .hljs-keyword,
+.markdown .hljs-selector-tag,
+.markdown .hljs-literal,
+.markdown .hljs-section,
+.markdown .hljs-link {
+  color: var(--accent);
+}
+.markdown .hljs-title.function_,
+.markdown .hljs-function .hljs-title {
+  color: var(--tk-fn);
+}
+.markdown .hljs-title.class_,
+.markdown .hljs-type,
+.markdown .hljs-built_in {
+  color: var(--tk-type);
+}
+.markdown .hljs-attr,
+.markdown .hljs-attribute,
+.markdown .hljs-property,
+.markdown .hljs-variable,
+.markdown .hljs-params {
+  color: var(--tk-prop);
+}
+.markdown .hljs-string,
+.markdown .hljs-regexp,
+.markdown .hljs-template-variable {
+  color: var(--tk-str);
+}
+.markdown .hljs-addition {
+  color: var(--ok);
+}
+.markdown .hljs-number,
+.markdown .hljs-symbol,
+.markdown .hljs-bullet {
+  color: var(--tk-num);
+}
+.markdown .hljs-comment,
+.markdown .hljs-quote {
+  color: var(--tk-comment);
+  font-style: italic;
+}
+.markdown .hljs-meta {
+  color: var(--tk-punct);
+}
+.markdown .hljs-deletion {
+  color: var(--danger);
+}
+.markdown .hljs-emphasis {
+  font-style: italic;
+}
+.markdown .hljs-strong {
+  font-weight: 600;
 }
 .markdown a {
   color: var(--accent);
