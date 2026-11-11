@@ -1614,8 +1614,9 @@ body {
   border-color: var(--accent-border);
 }
 .composer textarea {
+  resize: vertical;
   min-height: 54px;
-  max-height: 200px;
+  max-height: 70vh;
   padding: 11px 14px 6px;
   font-size: 13.5px;
   line-height: 1.5;
