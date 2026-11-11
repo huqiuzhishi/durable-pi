@@ -19,7 +19,7 @@ import {
   PanelTop,
   SquareTerminal,
 } from "lucide-vue-next";
-import type { AgentSummary } from "@sdk/api";
+import type { AgentSummary, GitDiff } from "@sdk/api";
 import { lineage } from "@sdk/models";
 import TranscriptItem from "./TranscriptItem.vue";
 import DeviceIcon from "./DeviceIcon.vue";
@@ -30,15 +30,14 @@ import {
   agent,
   agentHandle,
   agentState,
-  changedFiles,
   device,
   notify,
   openFileInNvim,
   preset,
-  scrollToToolCall,
   select,
   selected,
   sessionAgents,
+  sessionHandle,
   sessionSummary,
   toggle,
   layout,
@@ -50,6 +49,22 @@ const lineageNav = ref<HTMLElement>();
 const picker = ref(false);
 const filesMenu = ref(false);
 const filesMenuLeft = ref(0);
+const repoDiff = ref<GitDiff>({ root: null, base: null, mergeBase: null, files: [] });
+const diffError = ref("");
+let diffRequest = 0;
+async function loadRepoDiff() {
+  const request = ++diffRequest;
+  const handle = sessionHandle.value;
+  repoDiff.value = { root: null, base: null, mergeBase: null, files: [] };
+  diffError.value = "";
+  if (!handle) return;
+  try {
+    const result = await handle.gitDiff();
+    if (request === diffRequest) repoDiff.value = result;
+  } catch (e) {
+    if (request === diffRequest) diffError.value = e instanceof Error ? e.message : String(e);
+  }
+}
 // The hub reaches local devices directly and ssh/exe-dev devices over ssh; url devices have no shell access.
 const canTerminal = computed(() => !!sessionSummary.value?.cwd && device.value?.kind !== "url");
 // Terminal can sit above or left of chat. Each split size persists per browser.
@@ -167,10 +182,15 @@ function renameAgent() {
   };
 }
 
-watch(selected, () => {
-  picker.value = false;
-  filesMenu.value = false;
-});
+watch(
+  selected,
+  () => {
+    picker.value = false;
+    filesMenu.value = false;
+    void loadRepoDiff();
+  },
+  { immediate: true },
+);
 
 function toggleFilesMenu(event: MouseEvent) {
   const button = event.currentTarget as HTMLElement;
@@ -179,15 +199,12 @@ function toggleFilesMenu(event: MouseEvent) {
   filesMenuLeft.value = Math.max(0, Math.min(button.offsetLeft, (parent?.clientWidth ?? width) - width));
   filesMenu.value = !filesMenu.value;
   picker.value = false;
+  if (filesMenu.value) void loadRepoDiff();
 }
 
 function copyFilePath(path: string) {
   void navigator.clipboard.writeText(path);
   notify(`Copied ${path}`);
-}
-function jumpToFile(callId: string) {
-  filesMenu.value = false;
-  scrollToToolCall(callId);
 }
 function openChangedFileInNvim(path: string) {
   filesMenu.value = false;
@@ -279,11 +296,11 @@ watch(
             aria-label="Changed files"
             aria-haspopup="dialog"
             :aria-expanded="filesMenu"
-            :title="`${changedFiles.length} file(s) changed by this agent`"
+            :title="`${repoDiff.files.length} file(s) changed from ${repoDiff.base ?? 'HEAD'}`"
             @click="toggleFilesMenu"
           >
-            <FileDiff :size="16" /><span v-if="changedFiles.length" class="changed-files-badge">{{
-              changedFiles.length
+            <FileDiff :size="16" /><span v-if="repoDiff.files.length" class="changed-files-badge">{{
+              repoDiff.files.length
             }}</span>
           </button>
           <button
@@ -344,30 +361,34 @@ watch(
             aria-label="Changed files"
           >
             <div class="conversation-picker-heading">
-              <span>Changed files ({{ changedFiles.length }})</span>
-              <span v-if="sessionSummary?.cwd" class="changed-files-cwd">{{
-                sessionSummary.cwd
-              }}</span>
+              <span>Diff from merge base ({{ repoDiff.files.length }})</span>
+              <span v-if="repoDiff.base" class="changed-files-cwd">
+                {{ repoDiff.base }} · {{ repoDiff.mergeBase?.slice(0, 8) }}
+              </span>
             </div>
-            <div v-if="!changedFiles.length" class="changed-files-empty">
-              No files written or edited by this agent yet.
+            <div v-if="diffError" class="changed-files-empty">{{ diffError }}</div>
+            <div v-else-if="!repoDiff.root" class="changed-files-empty">
+              {{ sessionSummary?.cwd }} is not in a git repository.
             </div>
-            <div v-for="f in changedFiles" :key="f.path" class="changed-file-row">
+            <div v-else-if="!repoDiff.files.length" class="changed-files-empty">
+              No tracked changes from the merge base.
+            </div>
+            <div v-for="f in repoDiff.files" :key="f.path" class="changed-file-row">
               <button
                 type="button"
                 class="changed-file-main"
-                :title="`Jump to ${f.tool} (#${f.entryId}) — ${f.path}`"
-                @click="jumpToFile(f.callId)"
+                :title="`${f.status} — ${f.path}`"
+                @click="canTerminal && !f.status.startsWith('D') ? openChangedFileInNvim(f.path) : copyFilePath(f.path)"
               >
                 <FileCode2 :size="15" class="changed-file-icon" />
                 <div class="changed-file-text">
-                  <span class="changed-file-name">{{ f.name }}</span>
-                  <span class="changed-file-path">{{ f.rel }}</span>
+                  <span class="changed-file-name">{{ f.rel.split('/').at(-1) }}</span>
+                  <span class="changed-file-path">
+                    {{ f.oldRel ? `${f.oldRel} → ${f.rel}` : f.rel }}
+                  </span>
                 </div>
                 <span class="changed-file-meta">
-                  <span class="changed-file-tool" :class="f.tool">{{ f.tool }}</span>
-                  <span v-if="f.count > 1" class="changed-file-count">×{{ f.count }}</span>
-                  <span class="changed-file-entry">#{{ f.entryId }}</span>
+                  <span class="changed-file-tool">{{ f.status }}</span>
                 </span>
               </button>
               <div class="changed-file-actions">
@@ -375,17 +396,17 @@ watch(
                   type="button"
                   class="icon-button"
                   :title="`Copy ${f.path}`"
-                  :aria-label="`Copy path ${f.name}`"
+                  :aria-label="`Copy path ${f.rel}`"
                   @click="copyFilePath(f.path)"
                 >
                   <Copy :size="14" />
                 </button>
                 <button
-                  v-if="canTerminal"
+                  v-if="canTerminal && !f.status.startsWith('D')"
                   type="button"
                   class="changed-file-nvim"
                   :title="`Open ${f.path} with nvim in terminal`"
-                  :aria-label="`Open ${f.name} in nvim`"
+                  :aria-label="`Open ${f.rel} in nvim`"
                   @click="openChangedFileInNvim(f.path)"
                 >
                   <SquareTerminal :size="13" />nvim

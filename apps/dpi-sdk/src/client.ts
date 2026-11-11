@@ -4,6 +4,7 @@ import type {
   AgentExtensions,
   AgentSummary,
   CompactionSettings,
+  GitDiff,
   CreateAgentBody,
   CreateSessionBody,
   DeviceInfo,
@@ -184,6 +185,9 @@ export class SessionHandle {
   }
   inspect() {
     return this.client.request<unknown>("GET", `${this.base}/inspect`);
+  }
+  gitDiff() {
+    return this.client.request<GitDiff>("GET", `${this.base}/git-diff`);
   }
   compaction() {
     return this.client.request<CompactionSettings>("GET", `${this.base}/compaction`);

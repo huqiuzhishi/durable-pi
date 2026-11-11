@@ -83,6 +83,20 @@ export interface DirListing {
   dirs: { name: string; path: string }[];
 }
 
+export interface GitDiffFile {
+  status: string;
+  path: string;
+  rel: string;
+  oldRel?: string;
+}
+
+export interface GitDiff {
+  root: string | null;
+  base: string | null;
+  mergeBase: string | null;
+  files: GitDiffFile[];
+}
+
 // ---------------------------------------------------------------- sessions and agents
 
 export type AgentKind = "root" | "fork" | "subagent";

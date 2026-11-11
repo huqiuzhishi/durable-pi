@@ -91,6 +91,7 @@ export function v1(store: Store) {
     "/sessions/:s/tasks/:taskId/abort",
     route(async (req, res) => res.json(await store.abortTask(store.harness(L(res).row), int(req.params.taskId, "taskId")))),
   );
+  r.get("/sessions/:s/git-diff", route(async (_req, res) => res.json(await store.gitDiff(L(res).row))));
   r.get("/sessions/:s/inspect", route(async (_req, res) => res.json(await store.inspect(store.harness(L(res).row)))));
   r.get(
     "/sessions/:s/submissions/:id",

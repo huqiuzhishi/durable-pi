@@ -9,6 +9,7 @@ import type {
   DeviceInfo,
   DeviceTree,
   DirListing,
+  GitDiff,
   InboxItem,
   ModelInfo,
   Page,
@@ -31,6 +32,7 @@ import {
 import { lastAssistantText, messageText, toMarkdown, toTranscript } from "../../dpi-sdk/src/transcript.js";
 import { ApiFault, invalid, notFound } from "./errors.js";
 import { DatabaseSync } from "node:sqlite";
+import { execFile } from "node:child_process";
 import { mkdir, readdir, realpath, rename as renamePath, stat } from "node:fs/promises";
 import { mkdirSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -416,6 +418,38 @@ export class Store {
     }
     dirs.sort((a, b) => a.name.localeCompare(b.name));
     return { path: real, parent: dirname(real) !== real ? dirname(real) : undefined, dirs: dirs.slice(0, 500) };
+  }
+
+  /** Tracked files changed from this branch's merge base with the default branch, including working-tree changes. */
+  async gitDiff(row: SessionRow): Promise<GitDiff> {
+    const git = (args: string[]) =>
+      new Promise<string>((resolve, reject) =>
+        execFile("git", args, { cwd: row.cwd, timeout: 15_000, maxBuffer: 16 << 20 }, (e, out) =>
+          e ? reject(e) : resolve(out),
+        ),
+      );
+    const optional = (args: string[]) => git(args).then((s) => s.trim(), () => "");
+    const root = await optional(["rev-parse", "--show-toplevel"]);
+    if (!root) return { root: null, base: null, mergeBase: null, files: [] };
+    let base = await optional(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]);
+    if (!base)
+      for (const candidate of ["origin/main", "origin/master", "upstream/main", "upstream/master", "main", "master"])
+        if (await optional(["rev-parse", "--verify", "--quiet", candidate])) {
+          base = candidate;
+          break;
+        }
+    const mergeBase = base ? await optional(["merge-base", "HEAD", base]) : await optional(["rev-parse", "HEAD"]);
+    if (!mergeBase) return { root, base: base || null, mergeBase: null, files: [] };
+    const fields = (await git(["diff", "--name-status", "-z", mergeBase, "--"])).split("\0");
+    const files: GitDiff["files"] = [];
+    for (let i = 0; i < fields.length - 1; ) {
+      const status = fields[i++];
+      if (!status) continue;
+      const oldRel = fields[i++];
+      const rel = /^[RC]/.test(status) ? fields[i++] : oldRel;
+      if (rel) files.push({ status, path: join(root, rel), rel, ...(/^[RC]/.test(status) ? { oldRel } : {}) });
+    }
+    return { root, base: base || null, mergeBase, files: files.slice(0, 500) };
   }
 
   // ------------------------------------------------------------ sessions
