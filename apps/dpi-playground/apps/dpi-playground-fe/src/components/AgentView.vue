@@ -67,6 +67,20 @@ async function loadRepoDiff() {
 }
 // The hub reaches local devices directly and ssh/exe-dev devices over ssh; url devices have no shell access.
 const canTerminal = computed(() => !!sessionSummary.value?.cwd && device.value?.kind !== "url");
+const terminalKey = computed(() =>
+  selected.value ? `${selected.value.deviceId}/${selected.value.sessionId}` : undefined,
+);
+// Keep the current session's terminal connected after its first open so toggling it does not replay tmux.
+// A session change drops the hidden terminal instead of accumulating idle connections.
+const mountedTerminal = ref<string>();
+watch(
+  [() => ui.terminal, terminalKey],
+  ([open, key], [, previousKey]) => {
+    if (key !== previousKey) mountedTerminal.value = undefined;
+    if (open && key) mountedTerminal.value = key;
+  },
+  { immediate: true },
+);
 // Terminal can sit above or left of chat. Each split size persists per browser.
 const panel = ref<HTMLElement>();
 const terminalLeft = ref(localStorage.getItem("dpi.terminal-position") === "left");
@@ -457,15 +471,18 @@ watch(
       </div>
     </header>
     <div class="chat-body" :class="{ 'terminal-left': terminalLeft }">
-      <template v-if="ui.terminal && canTerminal && selected">
+      <template v-if="canTerminal && selected && mountedTerminal === terminalKey">
         <TerminalPanel
-          :key="`${selected.deviceId}/${selected.sessionId}`"
+          v-show="ui.terminal"
+          :key="terminalKey"
+          :active="ui.terminal"
           :style="{ flexBasis: `${termSize}%` }"
           :device-id="selected.deviceId"
           :session-id="selected.sessionId"
           :cwd="sessionSummary!.cwd"
         />
         <div
+          v-show="ui.terminal"
           class="terminal-resizer"
           role="separator"
           :aria-orientation="terminalLeft ? 'vertical' : 'horizontal'"

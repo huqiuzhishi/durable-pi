@@ -1,14 +1,14 @@
 <script setup lang="ts">
 // The session's tmux terminal on its device (see the hub's terminal.ts). Closing the panel or the tab only
 // detaches; reopening reattaches to the same shell, nvim and all.
-import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import "@xterm/xterm/css/xterm.css";
 import { theme, UI_FONTS, uiFont, uiScale } from "../client/store";
 
-const props = defineProps<{ deviceId: string; sessionId: string; cwd: string }>();
+const props = defineProps<{ deviceId: string; sessionId: string; cwd: string; active: boolean }>();
 const host = ref<HTMLElement>();
 let ws: WebSocket | undefined;
 let term: Terminal | undefined;
@@ -39,6 +39,17 @@ watch([theme, uiFont, uiScale], () => {
   term.options.fontSize = 12 * uiScale.value;
   fit?.fit();
 });
+watch(
+  () => props.active,
+  (active) => {
+    if (!active) return;
+    nextTick(() => {
+      fit?.fit();
+      term?.focus();
+    });
+  },
+  { flush: "post" },
+);
 
 onMounted(() => {
   term = new Terminal({
