@@ -129,6 +129,49 @@ test("slack: watcher gives each thread one agent, delivers once, drafts without 
   }
 });
 
+test("slack: only the 20 latest message agents stay visible", async () => {
+  const t = await tempStore();
+  const now = Date.now() / 1000;
+  const ts = (s: number) => (now + s).toFixed(6);
+  let dms: Parameters<typeof result>[0][] = [];
+  const slack: SlackApi = {
+    async call(tool, args) {
+      if (tool === "slack_read_user_profile") return JSON.stringify({ result: "User ID: UME\nReal Name: Me Myself\n" });
+      if (tool !== "slack_search_public_and_private") throw Error(`unexpected ${tool}`);
+      return String(args.filters).startsWith("to:") ? search(...dms) : search();
+    },
+  };
+  const me: SlackMe = { id: "", name: "" };
+  const extension = slackExtension(slack, me);
+  const store = await Store.open({ ...t.options, extensions: [extension] });
+  try {
+    const watcher = new SlackWatcher(store, slack, extension, me, { pollMs: 60_000, ignore: new Set() });
+    await watcher.poll();
+    dms = Array.from({ length: 22 }, (_, i) => ({
+      channel: `DM (ID: D${i})`,
+      from: `Person ${i} (ID: U${i})`,
+      ts: ts(i + 1),
+      text: `message ${i}`,
+    }));
+    await watcher.poll();
+
+    const session = store.resolveSession("Slack");
+    let visible = (await store.sessionSummary(session)).agents.filter((a) => a.id !== 1);
+    assert.equal(visible.length, 20);
+    assert.ok(!visible.some((a) => a.name === "DM · Person 0" || a.name === "DM · Person 1"));
+
+    dms = [{ channel: "DM (ID: D0)", from: "Person 0 (ID: U0)", ts: ts(30), text: "new reply" }];
+    await watcher.poll();
+    visible = (await store.sessionSummary(session)).agents.filter((a) => a.id !== 1);
+    assert.equal(visible.length, 20);
+    assert.ok(visible.some((a) => a.name === "DM · Person 0"));
+    assert.ok(!visible.some((a) => a.name === "DM · Person 2"));
+  } finally {
+    await store.close();
+    await t.cleanup();
+  }
+});
+
 const pd = (ts: string, urgency: string, alert: string) =>
   `=== Message from PagerDuty <botuser-T1-A1@slack-bots.com> (U2U6DJY15) at 2026-10-27 17:16:55 PDT === \nMessage TS: ${ts}\n:large_green_circle: *<https://roblox.pagerduty.com/incidents/Q1|Environment: production | Alert: ${alert} | Service: >*\n:tornado: *Urgency:* ${urgency}\nThread: 8 replies (latest: 2026-10-27 17:25:22 PDT)\n\n`;
 const human = (ts: string, name: string, id: string, text: string) =>

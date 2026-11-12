@@ -446,6 +446,8 @@ export class SlackWatcher {
       CREATE TABLE IF NOT EXISTS remote_posts(ts TEXT PRIMARY KEY);`);
     if (!(store.catalog.prepare("PRAGMA table_info(slack_remote)").all() as { name: string }[]).some((c) => c.name === "threadTs"))
       store.catalog.exec("ALTER TABLE slack_remote ADD COLUMN threadTs TEXT");
+    if (!(store.catalog.prepare("PRAGMA table_info(slack_threads)").all() as { name: string }[]).some((c) => c.name === "lastAt"))
+      store.catalog.exec("ALTER TABLE slack_threads ADD COLUMN lastAt INTEGER NOT NULL DEFAULT 0");
   }
 
   start() {
@@ -540,6 +542,7 @@ export class SlackWatcher {
         await this.once(m, "direct");
       }
       await this.pollOnCall();
+      await this.pruneThreads();
     } catch (e) {
       console.error("[slack]", e instanceof Error ? e.message : e);
     } finally {
@@ -708,6 +711,24 @@ export class SlackWatcher {
     }
   }
 
+  /** Keep only the 20 most recently active Slack message agents visible. Archived threads return on a new message. */
+  private async pruneThreads() {
+    const sessionId = this.meta("slack_session");
+    const row = sessionId && this.store.list().find((r) => r.id === sessionId);
+    if (!row) return;
+    const old = this.store.catalog
+      .prepare(`SELECT t.conversationId FROM slack_threads t
+        LEFT JOIN conversation_archived a ON a.sessionId=t.sessionId AND a.conversationId=t.conversationId
+        WHERE t.sessionId=? AND a.conversationId IS NULL
+        ORDER BY t.lastAt DESC,t.conversationId DESC LIMIT -1 OFFSET 20`)
+      .all(row.id) as { conversationId: number }[];
+    const h = this.store.harness(row);
+    for (const { conversationId } of old) {
+      const c = await h.conversation(conversationId as ConversationId, ctx);
+      if (c) await this.store.archiveAgent(row, c);
+    }
+  }
+
   private async once(m: SlackMessage, kind: Kind) {
     const key = `${m.channel}:${m.ts}`;
     if (this.store.catalog.prepare("SELECT 1 FROM slack_seen WHERE key=?").get(key)) return;
@@ -855,8 +876,8 @@ export class SlackWatcher {
         ctx,
       );
       this.store.catalog
-        .prepare("INSERT OR REPLACE INTO slack_threads VALUES(?,?,?)")
-        .run(row.id, key, c.id as number);
+        .prepare("INSERT OR REPLACE INTO slack_threads(sessionId,key,conversationId,lastAt) VALUES(?,?,?,?)")
+        .run(row.id, key, c.id as number, Number(m.ts) * 1000);
       const alertName = m.text.match(/Alert: ([^|>*]+)/)?.[1]?.trim() ?? m.text.match(/\|([^>]+)>/)?.[1] ?? "alert";
       this.store.setAgentName(
         row,
@@ -864,6 +885,9 @@ export class SlackWatcher {
         kind === "alert" ? `Alert · ${alertName.slice(0, 60)}` : `${m.channelName} · ${m.userName}`,
       );
     }
+    this.store.catalog
+      .prepare("UPDATE slack_threads SET lastAt=? WHERE sessionId=? AND key=?")
+      .run(Number(m.ts) * 1000, row.id, key);
     await this.store.send(c, { content: prompt(m, kind), requestId: `slack:${m.channel}:${m.ts}` });
     this.store.unarchiveAgent(row, c.id as number);
   }
