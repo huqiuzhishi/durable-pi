@@ -17,6 +17,7 @@ import {
   Pencil,
   PanelLeft,
   PanelTop,
+  RefreshCw,
   SquareTerminal,
 } from "lucide-vue-next";
 import type { AgentSummary, GitDiff } from "@sdk/api";
@@ -73,6 +74,10 @@ const terminalKey = computed(() =>
 // Keep the current session's terminal connected after its first open so toggling it does not replay tmux.
 // A session change drops the hidden terminal instead of accumulating idle connections.
 const mountedTerminal = ref<string>();
+const terminalGeneration = ref(0);
+function reconnectTerminal() {
+  terminalGeneration.value++;
+}
 watch(
   [() => ui.terminal, terminalKey],
   ([open, key], [, previousKey]) => {
@@ -331,6 +336,15 @@ watch(
           <button
             v-if="ui.terminal && canTerminal"
             class="icon-button"
+            aria-label="Restart terminal connection"
+            title="Restart terminal connection"
+            @click="reconnectTerminal"
+          >
+            <RefreshCw :size="18" />
+          </button>
+          <button
+            v-if="ui.terminal && canTerminal"
+            class="icon-button"
             :aria-label="terminalLeft ? 'Move terminal above chat' : 'Move terminal left of chat'"
             :title="terminalLeft ? 'Terminal above chat' : 'Terminal left of chat'"
             @click="toggleTerminalPosition"
@@ -474,7 +488,7 @@ watch(
       <template v-if="canTerminal && selected && mountedTerminal === terminalKey">
         <TerminalPanel
           v-show="ui.terminal"
-          :key="terminalKey"
+          :key="`${terminalKey}/${terminalGeneration}`"
           :active="ui.terminal"
           :style="{ flexBasis: `${termSize}%` }"
           :device-id="selected.deviceId"
